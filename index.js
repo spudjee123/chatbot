@@ -9,20 +9,19 @@ const { middleware, Client } = require('@line/bot-sdk');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LINE Bot config
+// === LINE Bot config ===
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-// Middleware
+// === Middleware สำหรับ request ทั่วไป (ไม่รวม webhook)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(middleware(lineConfig));
 
 // === โหลด setting.json ===
-const settingsPath = path.resolve(__dirname, 'setting.json');
+const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
 
 try {
@@ -34,8 +33,8 @@ try {
   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// === Route: LINE Webhook ===
-app.post('/webhook', async (req, res) => {
+// === Route: LINE Webhook (ใช้ middleware เฉพาะที่นี่) ===
+app.post('/webhook', middleware(lineConfig), async (req, res) => {
   try {
     const events = req.body.events;
     const results = await Promise.all(events.map(handleEvent));
@@ -46,12 +45,12 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// === ฟังก์ชันตอบข้อความด้วย GPT ===
+// === ฟังก์ชันตอบข้อความ ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
   const userMessage = event.message.text;
-  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`; // ใช้ prompt จาก setting.json
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
 
   try {
     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
@@ -77,18 +76,18 @@ async function handleEvent(event) {
   }
 }
 
-// === Route: แสดงหน้า admin.html ===
+// === Route: หน้า admin UI ===
 app.get('/admin', (req, res) => {
-  const filePath = path.resolve(__dirname, 'admin.html');
+  const filePath = path.resolve('admin.html');
   res.sendFile(filePath, err => {
     if (err) {
-      console.error('❌ ส่ง admin.html ไม่สำเร็จ:', err.message);
+      console.error('❌ ส่งไฟล์ admin.html ไม่สำเร็จ:', err.message);
       res.status(500).send('Internal Server Error');
     }
   });
 });
 
-// === API: ดูค่า prompt ปัจจุบัน ===
+// === API: โหลด prompt ปัจจุบัน ===
 app.get('/admin/settings', (req, res) => {
   res.json({ prompt: settings.prompt });
 });
@@ -109,7 +108,7 @@ app.post('/admin/settings', (req, res) => {
   }
 });
 
-// === Start Server ===
+// === เริ่มต้น server ===
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
