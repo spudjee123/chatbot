@@ -6,6 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@line/bot-sdk": "^10.0.0",
     "axios": "^1.10.0",
     "dotenv": "^16.6.1",
     "express": "^4.21.2"
