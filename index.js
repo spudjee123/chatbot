@@ -22,15 +22,15 @@ app.use(middleware(lineConfig));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ==== 🔁 โหลด settings ====
+// ==== โหลด settings.json ====
 const settingsPath = path.join(__dirname, 'setting.json');
-let settings = { prompt: 'สวัสดี! มีอะไรให้ช่วยไหม?' };
+let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
 if (fs.existsSync(settingsPath)) {
   const data = fs.readFileSync(settingsPath);
   settings = JSON.parse(data);
 }
 
-// ==== 📬 POST จาก LINE ====
+// ==== Webhook สำหรับ LINE ====
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
@@ -42,7 +42,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ==== 🤖 ฟังก์ชันตอบกลับ ====
+// ==== ฟังก์ชันตอบกลับ LINE ====
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
@@ -76,23 +76,30 @@ async function handleEvent(event) {
   }
 }
 
-// ==== 📄 แสดงหน้า admin.html ====
+// ==== แสดงหน้า admin.html ====
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// ==== 💾 บันทึก settings จากฟอร์ม ====
-app.post('/save-settings', (req, res) => {
-  const { prompt } = req.body;
-  settings.prompt = prompt;
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  res.send('ตั้งค่าถูกบันทึกเรียบร้อยแล้ว!');
+// ==== ✅ API: โหลด prompt ปัจจุบัน ====
+app.get('/admin/settings', (req, res) => {
+  res.json({ prompt: settings.prompt });
 });
 
-// ==== 🟢 เริ่มเซิร์ฟเวอร์ ====
+// ==== ✅ API: บันทึก prompt ใหม่ ====
+app.post('/admin/settings', (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).send('Missing prompt');
+  settings.prompt = prompt;
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+  res.status(200).send('Prompt saved');
+});
+
+// ==== เริ่มเซิร์ฟเวอร์ ====
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
+
 
 
 
