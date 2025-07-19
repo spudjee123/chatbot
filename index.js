@@ -1,14 +1,15 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { Configuration, OpenAIApi } = require('openai');
-const { Client, middleware } = require('@line/bot-sdk');
 require('dotenv').config();
+
+const { Configuration, OpenAIApi } = require('openai');
+const { middleware, Client } = require('@line/bot-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LINE config
+// LINE Bot config
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -16,35 +17,36 @@ const lineConfig = {
 const lineClient = new Client(lineConfig);
 
 // Middleware
-app.use(middleware(lineConfig));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(middleware(lineConfig));
 
-// Load setting.json
-const settingsPath = path.join(__dirname, 'setting.json');
+// === โหลด setting.json ===
+const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
+
 try {
   if (fs.existsSync(settingsPath)) {
-    const data = fs.readFileSync(settingsPath, 'utf-8');
-    settings = JSON.parse(data);
+    const content = fs.readFileSync(settingsPath, 'utf-8');
+    settings = JSON.parse(content);
   }
 } catch (err) {
-  console.error('❌ Error loading setting.json:', err.message);
+  console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// LINE webhook
+// === Route: LINE Webhook ===
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
     const results = await Promise.all(events.map(handleEvent));
     res.json(results);
   } catch (err) {
-    console.error('Webhook error:', err.message);
+    console.error('❌ LINE Webhook error:', err.message);
     res.status(500).end();
   }
 });
 
-// ChatGPT reply
+// === ฟังก์ชันตอบข้อความ ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
@@ -52,9 +54,7 @@ async function handleEvent(event) {
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
 
   try {
-    const configuration = new Configuration({
-      apiKey: process.env.GPT_API_KEY,
-    });
+    const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
     const openai = new OpenAIApi(configuration);
 
     const completion = await openai.createChatCompletion({
@@ -63,12 +63,13 @@ async function handleEvent(event) {
     });
 
     const reply = completion.data.choices[0].message.content;
+
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: reply,
     });
   } catch (err) {
-    console.error('OpenAI error:', err.response?.data || err.message);
+    console.error('❌ OpenAI error:', err.response?.data || err.message);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
@@ -76,42 +77,46 @@ async function handleEvent(event) {
   }
 }
 
-// === หน้า /admin ===
+// === Route: /admin (แสดงหน้าตั้งค่า) ===
 app.get('/admin', (req, res) => {
-  const filePath = path.join(__dirname, 'admin.html');
+  const filePath = path.resolve('admin.html');
+  console.log('📄 ส่งไฟล์ admin.html จาก:', filePath);
+
   res.sendFile(filePath, err => {
     if (err) {
-      console.error('❌ Error sending admin.html:', err.message);
+      console.error('❌ ส่งไฟล์ admin.html ไม่สำเร็จ:', err.message);
       res.status(500).send('Internal Server Error');
     }
   });
 });
 
-// === API โหลด settings ===
+// === API: โหลดค่าปัจจุบันของ prompt ===
 app.get('/admin/settings', (req, res) => {
   res.json({ prompt: settings.prompt });
 });
 
-// === API บันทึก prompt ใหม่ ===
+// === API: อัปเดต prompt แล้วเขียนลงไฟล์ ===
 app.post('/admin/settings', (req, res) => {
   const { prompt } = req.body;
-  if (!prompt) return res.status(400).send('Missing prompt');
+  if (!prompt) {
+    return res.status(400).send('Missing prompt');
+  }
 
   settings.prompt = prompt;
+
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     res.status(200).send('Prompt saved');
   } catch (err) {
-    console.error('❌ Failed to write setting.json:', err.message);
-    res.status(500).send('Internal Server Error');
+    console.error('❌ เขียน setting.json ไม่สำเร็จ:', err.message);
+    res.status(500).send('Failed to save prompt');
   }
 });
 
+// === Start Server ===
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
-
-
 
 
 
