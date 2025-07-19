@@ -1,93 +1,99 @@
 const express = require('express');
-const { Client, middleware } = require('@line/bot-sdk');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
-const dotenv = require('dotenv');
-
-dotenv.config();
+const { Configuration, OpenAIApi } = require('openai');
+const { Client, middleware } = require('@line/bot-sdk');
+require('dotenv').config();
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use('/admin', express.static(path.join(__dirname, 'admin.html')));
+const PORT = process.env.PORT || 3000;
 
-// === LINE CONFIG ===
-const config = {
+// LINE config
+const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
-const client = new Client(config);
 
-// === โหลด settings.json ===
+// LINE client
+const lineClient = new Client(lineConfig);
+
+// Middleware
+app.use(middleware(lineConfig));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ==== 🔁 โหลด settings ====
 const settingsPath = path.join(__dirname, 'setting.json');
-let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยเหลือไหมคะ' };
+let settings = { prompt: 'สวัสดี! มีอะไรให้ช่วยไหม?' };
 if (fs.existsSync(settingsPath)) {
-  settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  const data = fs.readFileSync(settingsPath);
+  settings = JSON.parse(data);
 }
 
-// === Webhook จาก LINE ===
-app.post('/webhook', middleware(config), async (req, res) => {
-  Promise.all(req.body.events.map(handleEvent)).then(result => res.json(result));
+// ==== 📬 POST จาก LINE ====
+app.post('/webhook', async (req, res) => {
+  try {
+    const events = req.body.events;
+    const results = await Promise.all(events.map(handleEvent));
+    res.json(results);
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.status(500).end();
+  }
 });
 
+// ==== 🤖 ฟังก์ชันตอบกลับ ====
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') return;
+  if (event.type !== 'message' || event.message.type !== 'text') {
+    return Promise.resolve(null);
+  }
 
   const userMessage = event.message.text;
-  const fullPrompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nพนักงาน:`;
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
 
   try {
-    const reply = await generateReply(fullPrompt);
-    return client.replyMessage(event.replyToken, {
+    const configuration = new Configuration({
+      apiKey: process.env.GPT_API_KEY,
+    });
+    const openai = new OpenAIApi(configuration);
+
+    const completion = await openai.createChatCompletion({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const reply = completion.data.choices[0].message.content;
+    return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: reply,
     });
   } catch (err) {
-    console.error('❌ Error:', err.message);
-    return client.replyMessage(event.replyToken, {
+    console.error('OpenAI error:', err.response?.data || err.message);
+    return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: 'ขออภัย เซิร์ฟเวอร์มีปัญหาในการตอบกลับ',
+      text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ชั่วคราว',
     });
   }
 }
 
-// === เชื่อม GPT ===
-async function generateReply(prompt) {
-  const response = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GPT_API_KEY}`,
-      },
-    }
-  );
-
-  return response.data.choices[0].message.content.trim();
-}
-
-// === Admin API สำหรับจัดการ Prompt ===
-app.get('/admin/settings', (req, res) => {
-  res.json(settings);
+// ==== 📄 แสดงหน้า admin.html ====
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-app.post('/admin/settings', (req, res) => {
-  const newPrompt = req.body.prompt;
-  settings.prompt = newPrompt;
+// ==== 💾 บันทึก settings จากฟอร์ม ====
+app.post('/save-settings', (req, res) => {
+  const { prompt } = req.body;
+  settings.prompt = prompt;
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  res.json({ success: true });
+  res.send('ตั้งค่าถูกบันทึกเรียบร้อยแล้ว!');
 });
 
-// === เริ่มเซิร์ฟเวอร์ ===
-const PORT = process.env.PORT || 3000;
+// ==== 🟢 เริ่มเซิร์ฟเวอร์ ====
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
+
 
 
 
