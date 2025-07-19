@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>🧠 แก้ไข Prompt (PG DOG)</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #f0f0f0; }
+    textarea { width: 100%; height: 200px; }
+    button { margin-top: 1rem; padding: 0.5rem 1rem; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🧠 แก้ไขข้อความแนะนำระบบ</h1>
+  <textarea id="prompt"></textarea>
+  <br>
+  <button onclick="savePrompt()">💾 บันทึก</button>
+  <p id="status"></p>
+
+  <script>
+    async function loadPrompt() {
+      const res = await fetch('/admin/prompt');
+      const data = await res.json();
+      document.getElementById('prompt').value = data.prompt;
+    }
+
+    async function savePrompt() {
+      const prompt = document.getElementById('prompt').value;
+      const res = await fetch('/admin/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+
+      if (res.ok) {
+        document.getElementById('status').textContent = '✅ บันทึกเรียบร้อยแล้ว';
+      } else {
+        document.getElementById('status').textContent = '❌ เกิดข้อผิดพลาด';
+      }
+    }
+
+    loadPrompt();
+  </script>
+</body>
+</html>
