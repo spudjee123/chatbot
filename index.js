@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 require('dotenv').config();
 
 const { Configuration, OpenAIApi } = require('openai');
@@ -16,6 +17,17 @@ const lineConfig = {
 };
 const lineClient = new Client(lineConfig);
 
+// === middleware
+app.use(middleware(lineConfig));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// === Multer สำหรับอัปโหลดรูป
+const uploadPath = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath);
+const upload = multer({ dest: uploadPath });
+
 // === โหลด setting.json ===
 const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ', keywords: [] };
@@ -29,12 +41,7 @@ try {
   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// === Middleware: ต้องใส่ LINE middleware ก่อน express.json() ===
-app.use(middleware(lineConfig));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// === Webhook สำหรับ LINE ===
+// === LINE Webhook ===
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
@@ -52,29 +59,25 @@ async function handleEvent(event) {
 
   const userText = event.message.text;
 
-  // เช็คว่า keyword ตรงกับที่ตั้งไว้ใน setting.json หรือไม่
   const match = settings.keywords.find(entry =>
     entry.keywords.some(keyword => userText.includes(keyword))
   );
 
   if (match) {
-    // ส่งรูปทั้งหมดที่เจอ
     const imageMessages = match.images.map(url => ({
       type: 'image',
       originalContentUrl: url,
-      previewImageUrl: url
+      previewImageUrl: url,
     }));
 
     return lineClient.replyMessage(event.replyToken, imageMessages);
   }
 
-  // ถ้าไม่ตรง keyword → ใช้ GPT ตอบ
   try {
     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
     const openai = new OpenAIApi(configuration);
 
     const prompt = `${settings.prompt}\n\nลูกค้า: ${userText}\n\nตอบกลับ:`;
-
     const completion = await openai.createChatCompletion({
       model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
@@ -94,26 +97,25 @@ async function handleEvent(event) {
   }
 }
 
-// === Route แสดงหน้า admin ===
+// === Route admin ===
 app.get('/admin', (req, res) => {
   const filePath = path.resolve('admin.html');
   res.sendFile(filePath, err => {
     if (err) {
-      console.error('❌ ส่ง admin.html ไม่ได้:', err.message);
+      console.error('❌ admin.html ส่งไม่สำเร็จ:', err.message);
       res.status(500).send('Internal Server Error');
     }
   });
 });
 
-// === API โหลดค่าปัจจุบัน ===
+// === API โหลด settings ===
 app.get('/admin/settings', (req, res) => {
   res.json(settings);
 });
 
-// === API บันทึก prompt + keyword ===
+// === API บันทึก settings ใหม่ ===
 app.post('/admin/settings', (req, res) => {
   const { prompt, keywords } = req.body;
-
   if (!prompt || !Array.isArray(keywords)) {
     return res.status(400).send('Invalid input');
   }
@@ -125,14 +127,22 @@ app.post('/admin/settings', (req, res) => {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     res.status(200).send('Settings saved');
   } catch (err) {
-    console.error('❌ เขียน setting.json ไม่สำเร็จ:', err.message);
-    res.status(500).send('Failed to save settings');
+    console.error('❌ เขียนไฟล์ไม่สำเร็จ:', err.message);
+    res.status(500).send('Failed to save');
   }
+});
+
+// ✅ === Route upload สำหรับรับรูปภาพจาก admin.html ===
+app.post('/upload', upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).send('No file uploaded');
+
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+  res.json({ imageUrl });
 });
 
 // === Start server ===
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
 
 
