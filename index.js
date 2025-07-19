@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(middleware(lineConfig));
 
 // === โหลด setting.json ===
-const settingsPath = path.resolve('setting.json');
+const settingsPath = path.resolve(__dirname, 'setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
 
 try {
@@ -46,12 +46,12 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// === ฟังก์ชันตอบข้อความ ===
+// === ฟังก์ชันตอบข้อความด้วย GPT ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
   const userMessage = event.message.text;
-  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`; // ใช้ prompt จาก setting.json
 
   try {
     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
@@ -77,30 +77,26 @@ async function handleEvent(event) {
   }
 }
 
-// === Route: /admin (แสดงหน้าตั้งค่า) ===
+// === Route: แสดงหน้า admin.html ===
 app.get('/admin', (req, res) => {
-  const filePath = path.resolve('admin.html');
-  console.log('📄 ส่งไฟล์ admin.html จาก:', filePath);
-
+  const filePath = path.resolve(__dirname, 'admin.html');
   res.sendFile(filePath, err => {
     if (err) {
-      console.error('❌ ส่งไฟล์ admin.html ไม่สำเร็จ:', err.message);
+      console.error('❌ ส่ง admin.html ไม่สำเร็จ:', err.message);
       res.status(500).send('Internal Server Error');
     }
   });
 });
 
-// === API: โหลดค่าปัจจุบันของ prompt ===
+// === API: ดูค่า prompt ปัจจุบัน ===
 app.get('/admin/settings', (req, res) => {
   res.json({ prompt: settings.prompt });
 });
 
-// === API: อัปเดต prompt แล้วเขียนลงไฟล์ ===
+// === API: บันทึก prompt ใหม่ ===
 app.post('/admin/settings', (req, res) => {
   const { prompt } = req.body;
-  if (!prompt) {
-    return res.status(400).send('Missing prompt');
-  }
+  if (!prompt) return res.status(400).send('Missing prompt');
 
   settings.prompt = prompt;
 
@@ -117,6 +113,7 @@ app.post('/admin/settings', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
+
 
 
 
