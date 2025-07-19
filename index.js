@@ -2,39 +2,41 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-
 const { Configuration, OpenAIApi } = require('openai');
 const { middleware, Client } = require('@line/bot-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// === LINE Bot config ===
+// LINE Bot config
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-// === Middleware สำหรับ request ทั่วไป (ไม่รวม webhook)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(middleware(lineConfig));
+app.use(express.static(__dirname));
 
-// === โหลด setting.json ===
+// โหลด setting.json
 const settingsPath = path.resolve('setting.json');
-let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
+let settings = {
+  prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ',
+  imageTriggers: []
+};
 
 try {
   if (fs.existsSync(settingsPath)) {
-    const content = fs.readFileSync(settingsPath, 'utf-8');
-    settings = JSON.parse(content);
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
   }
 } catch (err) {
   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// === Route: LINE Webhook (ใช้ middleware เฉพาะที่นี่) ===
-app.post('/webhook', middleware(lineConfig), async (req, res) => {
+// LINE Webhook
+app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
     const results = await Promise.all(events.map(handleEvent));
@@ -45,24 +47,37 @@ app.post('/webhook', middleware(lineConfig), async (req, res) => {
   }
 });
 
-// === ฟังก์ชันตอบข้อความ ===
+// ฟังก์ชัน handleEvent
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
-  const userMessage = event.message.text;
-  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
+  const userMessage = event.message.text.trim().toLowerCase();
 
+  for (const trigger of settings.imageTriggers || []) {
+    const { keywords = [], images = [] } = trigger;
+    if (keywords.some(kw => userMessage.includes(kw.toLowerCase())) && images.length > 0) {
+      const replyMessages = [
+        { type: 'text', text: 'นี่คือข้อมูลที่คุณต้องการค่ะ 📸' },
+        ...images.map(url => ({
+          type: 'image',
+          originalContentUrl: url,
+          previewImageUrl: url
+        }))
+      ];
+      return lineClient.replyMessage(event.replyToken, replyMessages.slice(0, 5));
+    }
+  }
+
+  // ไม่ match keyword ใดเลย → ใช้ GPT ตอบ
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
     const openai = new OpenAIApi(configuration);
-
     const completion = await openai.createChatCompletion({
       model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
     });
-
     const reply = completion.data.choices[0].message.content;
-
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: reply,
@@ -76,148 +91,152 @@ async function handleEvent(event) {
   }
 }
 
-// === Route: หน้า admin UI ===
+// admin routes
 app.get('/admin', (req, res) => {
-  const filePath = path.resolve('admin.html');
-  res.sendFile(filePath, err => {
-    if (err) {
-      console.error('❌ ส่งไฟล์ admin.html ไม่สำเร็จ:', err.message);
-      res.status(500).send('Internal Server Error');
-    }
-  });
+  res.sendFile(path.resolve('admin.html'));
 });
 
-// === API: โหลด prompt ปัจจุบัน ===
 app.get('/admin/settings', (req, res) => {
-  res.json({ prompt: settings.prompt });
+  res.json(settings);
 });
 
-// === API: บันทึก prompt ใหม่ ===
 app.post('/admin/settings', (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).send('Missing prompt');
+  const { prompt, imageTriggers } = req.body;
+  if (!prompt || !Array.isArray(imageTriggers)) return res.status(400).send('Missing data');
 
   settings.prompt = prompt;
+  settings.imageTriggers = imageTriggers;
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    res.status(200).send('Prompt saved');
+    res.status(200).send('Settings saved');
   } catch (err) {
     console.error('❌ เขียน setting.json ไม่สำเร็จ:', err.message);
-    res.status(500).send('Failed to save prompt');
+    res.status(500).send('Failed to save settings');
   }
 });
 
-// === เริ่มต้น server ===
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
 
 
 // const express = require('express');
-// const axios = require('axios');
 // const fs = require('fs');
 // const path = require('path');
-// const dotenv = require('dotenv');
-// const line = require('@line/bot-sdk');
+// require('dotenv').config();
 
-// dotenv.config();
+// const { Configuration, OpenAIApi } = require('openai');
+// const { middleware, Client } = require('@line/bot-sdk');
 
 // const app = express();
-// app.use(express.json());
-// app.use(express.urlencoded({ extended: true }));
-// app.use(express.static(path.join(__dirname, 'public')));
+// const PORT = process.env.PORT || 3000;
 
-// // === Line Config ===
-// const config = {
+// // === LINE Bot config ===
+// const lineConfig = {
 //   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
 //   channelSecret: process.env.LINE_CHANNEL_SECRET,
 // };
-// const client = new line.Client(config);
+// const lineClient = new Client(lineConfig);
 
-// // === Settings Path ===
-// const settingsPath = path.resolve('./setting.json');
+// // === Middleware สำหรับ request ทั่วไป (ไม่รวม webhook)
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: true }));
 
-// // === โหลดค่า system_prompt จากไฟล์ ===
-// function loadPrompt() {
+// // === โหลด setting.json ===
+// const settingsPath = path.resolve('setting.json');
+// let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
+
+// try {
+//   if (fs.existsSync(settingsPath)) {
+//     const content = fs.readFileSync(settingsPath, 'utf-8');
+//     settings = JSON.parse(content);
+//   }
+// } catch (err) {
+//   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
+// }
+
+// // === Route: LINE Webhook (ใช้ middleware เฉพาะที่นี่) ===
+// app.post('/webhook', middleware(lineConfig), async (req, res) => {
 //   try {
-//     const data = fs.readFileSync(settingsPath, 'utf-8');
-//     return JSON.parse(data).system_prompt || 'คุณคือแอดมิน LINE';
+//     const events = req.body.events;
+//     const results = await Promise.all(events.map(handleEvent));
+//     res.json(results);
 //   } catch (err) {
-//     console.warn('⚠️ ไม่พบ setting.json หรืออ่านไม่สำเร็จ:', err.message);
-//     return 'คุณคือแอดมิน LINE';
+//     console.error('❌ LINE Webhook error:', err.message);
+//     res.status(500).end();
+//   }
+// });
+
+// // === ฟังก์ชันตอบข้อความ ===
+// async function handleEvent(event) {
+//   if (event.type !== 'message' || event.message.type !== 'text') return null;
+
+//   const userMessage = event.message.text;
+//   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
+
+//   try {
+//     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
+//     const openai = new OpenAIApi(configuration);
+
+//     const completion = await openai.createChatCompletion({
+//       model: 'gpt-3.5-turbo',
+//       messages: [{ role: 'user', content: prompt }],
+//     });
+
+//     const reply = completion.data.choices[0].message.content;
+
+//     return lineClient.replyMessage(event.replyToken, {
+//       type: 'text',
+//       text: reply,
+//     });
+//   } catch (err) {
+//     console.error('❌ OpenAI error:', err.response?.data || err.message);
+//     return lineClient.replyMessage(event.replyToken, {
+//       type: 'text',
+//       text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
+//     });
 //   }
 // }
 
-// // === Line Webhook ===
-// app.post('/webhook', line.middleware(config), async (req, res) => {
-//   const events = req.body.events;
-//   const prompt = loadPrompt();
-
-//   const replies = events.map(async (event) => {
-//     if (event.type === 'message' && event.message.type === 'text') {
-//       const userText = event.message.text;
-
-//       try {
-//         const completion = await axios.post(
-//           'https://api.openai.com/v1/chat/completions',
-//           {
-//             model: 'gpt-3.5-turbo',
-//             messages: [
-//               { role: 'system', content: prompt },
-//               { role: 'user', content: userText },
-//             ],
-//           },
-//           {
-//             headers: {
-//               'Content-Type': 'application/json',
-//               Authorization: `Bearer ${process.env.GPT_API_KEY}`,
-//             },
-//           }
-//         );
-
-//         const reply = completion.data.choices[0].message.content;
-//         return client.replyMessage(event.replyToken, { type: 'text', text: reply });
-
-//       } catch (error) {
-//         console.error('❌ GPT ERROR:', error.response?.data || error.message);
-//         return client.replyMessage(event.replyToken, {
-//           type: 'text',
-//           text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
-//         });
-//       }
+// // === Route: หน้า admin UI ===
+// app.get('/admin', (req, res) => {
+//   const filePath = path.resolve('admin.html');
+//   res.sendFile(filePath, err => {
+//     if (err) {
+//       console.error('❌ ส่งไฟล์ admin.html ไม่สำเร็จ:', err.message);
+//       res.status(500).send('Internal Server Error');
 //     }
 //   });
-
-//   Promise.all(replies).then(() => res.status(200).end());
 // });
 
-// // === หน้า /admin ===
-// app.get('/admin', (req, res) => {
-//   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+// // === API: โหลด prompt ปัจจุบัน ===
+// app.get('/admin/settings', (req, res) => {
+//   res.json({ prompt: settings.prompt });
 // });
 
-// // === API บันทึก prompt ใหม่ ===
-// app.post('/admin/prompt', (req, res) => {
-//   const newPrompt = req.body.prompt;
+// // === API: บันทึก prompt ใหม่ ===
+// app.post('/admin/settings', (req, res) => {
+//   const { prompt } = req.body;
+//   if (!prompt) return res.status(400).send('Missing prompt');
 
-//   if (!newPrompt) {
-//     return res.status(400).json({ success: false, message: 'ไม่มี prompt ที่ส่งมา' });
-//   }
+//   settings.prompt = prompt;
 
 //   try {
-//     fs.writeFileSync(settingsPath, JSON.stringify({ system_prompt: newPrompt }, null, 2), 'utf-8');
-//     res.json({ success: true });
+//     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+//     res.status(200).send('Prompt saved');
 //   } catch (err) {
-//     console.error('❌ บันทึกไม่สำเร็จ:', err.message);
-//     res.status(500).json({ success: false, message: 'ไม่สามารถบันทึกได้' });
+//     console.error('❌ เขียน setting.json ไม่สำเร็จ:', err.message);
+//     res.status(500).send('Failed to save prompt');
 //   }
 // });
 
-// // === เริ่มเซิร์ฟเวอร์ ===
-// const port = process.env.PORT || 3000;
-// app.listen(port, () => {
-//   console.log(`🚀 Server ready at http://localhost:${port}`);
+// // === เริ่มต้น server ===
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 // });
+
+
 
 

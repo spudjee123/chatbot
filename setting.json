@@ -1,3 +1,19 @@
 {
-  "prompt": "สวัสดีค่ะ มีอะไรให้เราช่วยเหลือไหมคะ"
+  "prompt": "สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ",
+  "imageTriggers": [
+    {
+      "keywords": ["โปรโมชั่น", "โปรล่าสุด"],
+      "images": [
+        "https://yourdomain.com/promo1.jpg",
+        "https://yourdomain.com/promo2.jpg"
+      ]
+    },
+    {
+      "keywords": ["แนะนำเกม", "เกมน่าเล่น"],
+      "images": [
+        "https://yourdomain.com/game1.jpg",
+        "https://yourdomain.com/game2.jpg"
+      ]
+    }
+  ]
 }

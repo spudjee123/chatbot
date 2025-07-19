@@ -1,6 +1,95 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  <meta charset="UTF-8">
+  <title>ตั้งค่าแชทบอท</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 30px auto;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    h2 {
+      margin-top: 30px;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      font-family: monospace;
+      padding: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #status {
+      margin-top: 15px;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <h1>🛠️ ตั้งค่าแชทบอท</h1>
+
+  <h2>📝 Prompt พื้นฐาน</h2>
+  <textarea id="prompt" placeholder="เช่น สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ..."></textarea>
+
+  <h2>🔑 Keyword และลิงก์รูปภาพ (JSON)</h2>
+  <textarea id="imageTriggers" placeholder='[
+  {
+    "keywords": ["โปรโมชั่น", "โปรล่าสุด"],
+    "images": ["https://example.com/promo1.jpg"]
+  }
+]'></textarea>
+
+  <button onclick="saveSettings()">💾 บันทึก</button>
+  <p id="status"></p>
+
+  <script>
+    async function loadSettings() {
+      const res = await fetch('/admin/settings');
+      const json = await res.json();
+      document.getElementById('prompt').value = json.prompt || '';
+      document.getElementById('imageTriggers').value = JSON.stringify(json.imageTriggers || [], null, 2);
+    }
+
+    async function saveSettings() {
+      const prompt = document.getElementById('prompt').value;
+      let imageTriggers;
+      try {
+        imageTriggers = JSON.parse(document.getElementById('imageTriggers').value);
+      } catch {
+        document.getElementById('status').innerText = '❌ รูปแบบ JSON ไม่ถูกต้อง';
+        return;
+      }
+
+      const res = await fetch('/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, imageTriggers })
+      });
+
+      document.getElementById('status').innerText = res.ok ? '✅ บันทึกเรียบร้อย' : '❌ บันทึกไม่สำเร็จ';
+    }
+
+    loadSettings();
+  </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="th">
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ตั้งค่า Prompt Bot</title>
@@ -96,4 +185,4 @@
     }
   </script>
 </body>
-</html>
+</html> -->
