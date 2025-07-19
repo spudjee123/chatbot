@@ -1,90 +1,90 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ตั้งค่าแชทบอท</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    body {
-      font-family: sans-serif;
-      max-width: 800px;
-      margin: 30px auto;
-      padding: 20px;
-      background: #f4f4f4;
-    }
-    h2 {
-      margin-top: 30px;
-    }
-    textarea {
-      width: 100%;
-      height: 200px;
-      font-family: monospace;
-      padding: 10px;
-    }
-    button {
-      padding: 10px 20px;
-      margin-top: 15px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #45a049;
-    }
-    #status {
-      margin-top: 15px;
-      color: green;
-    }
+    body { background-color: #f8f9fa; }
+    .container { max-width: 800px; margin-top: 40px; }
+    textarea.form-control { height: 150px; }
+    .keyword-group { border: 1px solid #ccc; padding: 15px; border-radius: 10px; margin-bottom: 20px; background: #fff; }
   </style>
 </head>
 <body>
-  <h1>🛠️ ตั้งค่าแชทบอท</h1>
+<div class="container">
+  <h2 class="mb-4">ตั้งค่าแชทบอท</h2>
+  <form id="settingForm">
+    <div class="mb-4">
+      <label class="form-label">Prompt เริ่มต้น</label>
+      <textarea id="prompt" class="form-control" required></textarea>
+    </div>
 
-  <h2>📝 Prompt พื้นฐาน</h2>
-  <textarea id="prompt" placeholder="เช่น สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ..."></textarea>
+    <h5 class="mt-4">คำตอบอัตโนมัติตามคีย์เวิร์ด</h5>
+    <div id="keywordsContainer"></div>
 
-  <h2>🔑 Keyword และลิงก์รูปภาพ (JSON)</h2>
-  <textarea id="imageTriggers" placeholder='[
-  {
-    "keywords": ["โปรโมชั่น", "โปรล่าสุด"],
-    "images": ["https://example.com/promo1.jpg"]
+    <button type="button" class="btn btn-outline-primary mb-3" onclick="addKeywordGroup()">➕ เพิ่มคีย์เวิร์ดใหม่</button>
+
+    <div>
+      <button class="btn btn-success">💾 บันทึก</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  async function loadSettings() {
+    const res = await fetch('/admin/settings');
+    const data = await res.json();
+    document.getElementById('prompt').value = data.prompt || '';
+    (data.keywords || []).forEach(addKeywordGroup);
   }
-]'></textarea>
 
-  <button onclick="saveSettings()">💾 บันทึก</button>
-  <p id="status"></p>
+  function addKeywordGroup(entry = { keywords: [], images: [] }) {
+    const container = document.getElementById('keywordsContainer');
+    const div = document.createElement('div');
+    div.className = 'keyword-group';
+    div.innerHTML = `
+      <div class="mb-2">
+        <label class="form-label">คีย์เวิร์ด (คั่นด้วยคอมม่า)</label>
+        <input type="text" class="form-control keyword-input" value="${entry.keywords.join(',')}">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">ลิงก์รูปภาพ (คั่นด้วยคอมม่า)</label>
+        <input type="text" class="form-control image-input" value="${entry.images.join(',')}">
+      </div>
+      <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">🗑 ลบ</button>
+    `;
+    container.appendChild(div);
+  }
 
-  <script>
-    async function loadSettings() {
-      const res = await fetch('/admin/settings');
-      const json = await res.json();
-      document.getElementById('prompt').value = json.prompt || '';
-      document.getElementById('imageTriggers').value = JSON.stringify(json.imageTriggers || [], null, 2);
+  document.getElementById('settingForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const prompt = document.getElementById('prompt').value;
+    const keywordGroups = Array.from(document.querySelectorAll('.keyword-group')).map(div => {
+      const keywords = div.querySelector('.keyword-input').value.split(',').map(s => s.trim()).filter(Boolean);
+      const images = div.querySelector('.image-input').value.split(',').map(s => s.trim()).filter(Boolean);
+      return { keywords, images };
+    });
+
+    const res = await fetch('/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, keywords: keywordGroups })
+    });
+
+    if (res.ok) {
+      alert('✅ บันทึกสำเร็จ');
+    } else {
+      alert('❌ เกิดข้อผิดพลาดในการบันทึก');
     }
+  });
 
-    async function saveSettings() {
-      const prompt = document.getElementById('prompt').value;
-      let imageTriggers;
-      try {
-        imageTriggers = JSON.parse(document.getElementById('imageTriggers').value);
-      } catch {
-        document.getElementById('status').innerText = '❌ รูปแบบ JSON ไม่ถูกต้อง';
-        return;
-      }
-
-      const res = await fetch('/admin/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, imageTriggers })
-      });
-
-      document.getElementById('status').innerText = res.ok ? '✅ บันทึกเรียบร้อย' : '❌ บันทึกไม่สำเร็จ';
-    }
-
-    loadSettings();
-  </script>
+  loadSettings();
+</script>
 </body>
 </html>
+
 
 
 <!-- <!DOCTYPE html>

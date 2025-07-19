@@ -1,18 +1,18 @@
 {
-  "prompt": "สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ",
-  "imageTriggers": [
+  "prompt": "สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ",
+  "keywords": [
     {
-      "keywords": ["โปรโมชั่น", "โปรล่าสุด"],
+      "keywords": ["โปรโมชั่น", "โปรพิเศษ"],
       "images": [
-        "https://yourdomain.com/promo1.jpg",
-        "https://yourdomain.com/promo2.jpg"
+        "https://yourdomain.com/images/promo1.jpg",
+        "https://yourdomain.com/images/promo2.jpg"
       ]
     },
     {
-      "keywords": ["แนะนำเกม", "เกมน่าเล่น"],
+      "keywords": ["แนะนำเกม"],
       "images": [
-        "https://yourdomain.com/game1.jpg",
-        "https://yourdomain.com/game2.jpg"
+        "https://yourdomain.com/images/game1.jpg",
+        "https://yourdomain.com/images/game2.jpg"
       ]
     }
   ]

@@ -2,40 +2,39 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+
 const { Configuration, OpenAIApi } = require('openai');
 const { middleware, Client } = require('@line/bot-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LINE Bot config
+// === LINE Bot config ===
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(middleware(lineConfig));
-app.use(express.static(__dirname));
-
-// โหลด setting.json
+// === โหลด setting.json ===
 const settingsPath = path.resolve('setting.json');
-let settings = {
-  prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ',
-  imageTriggers: []
-};
+let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ', keywords: [] };
 
 try {
   if (fs.existsSync(settingsPath)) {
-    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const content = fs.readFileSync(settingsPath, 'utf-8');
+    settings = JSON.parse(content);
   }
 } catch (err) {
   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// LINE Webhook
+// === Middleware: ต้องใส่ LINE middleware ก่อน express.json() ===
+app.use(middleware(lineConfig));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// === Webhook สำหรับ LINE ===
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
@@ -47,36 +46,40 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ฟังก์ชัน handleEvent
+// === ฟังก์ชันตอบกลับ ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
-  const userMessage = event.message.text.trim().toLowerCase();
+  const userText = event.message.text;
 
-  for (const trigger of settings.imageTriggers || []) {
-    const { keywords = [], images = [] } = trigger;
-    if (keywords.some(kw => userMessage.includes(kw.toLowerCase())) && images.length > 0) {
-      const replyMessages = [
-        { type: 'text', text: 'นี่คือข้อมูลที่คุณต้องการค่ะ 📸' },
-        ...images.map(url => ({
-          type: 'image',
-          originalContentUrl: url,
-          previewImageUrl: url
-        }))
-      ];
-      return lineClient.replyMessage(event.replyToken, replyMessages.slice(0, 5));
-    }
+  // เช็คว่า keyword ตรงกับที่ตั้งไว้ใน setting.json หรือไม่
+  const match = settings.keywords.find(entry =>
+    entry.keywords.some(keyword => userText.includes(keyword))
+  );
+
+  if (match) {
+    // ส่งรูปทั้งหมดที่เจอ
+    const imageMessages = match.images.map(url => ({
+      type: 'image',
+      originalContentUrl: url,
+      previewImageUrl: url
+    }));
+
+    return lineClient.replyMessage(event.replyToken, imageMessages);
   }
 
-  // ไม่ match keyword ใดเลย → ใช้ GPT ตอบ
-  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
+  // ถ้าไม่ตรง keyword → ใช้ GPT ตอบ
   try {
     const configuration = new Configuration({ apiKey: process.env.GPT_API_KEY });
     const openai = new OpenAIApi(configuration);
+
+    const prompt = `${settings.prompt}\n\nลูกค้า: ${userText}\n\nตอบกลับ:`;
+
     const completion = await openai.createChatCompletion({
       model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
     });
+
     const reply = completion.data.choices[0].message.content;
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
@@ -91,21 +94,32 @@ async function handleEvent(event) {
   }
 }
 
-// admin routes
+// === Route แสดงหน้า admin ===
 app.get('/admin', (req, res) => {
-  res.sendFile(path.resolve('admin.html'));
+  const filePath = path.resolve('admin.html');
+  res.sendFile(filePath, err => {
+    if (err) {
+      console.error('❌ ส่ง admin.html ไม่ได้:', err.message);
+      res.status(500).send('Internal Server Error');
+    }
+  });
 });
 
+// === API โหลดค่าปัจจุบัน ===
 app.get('/admin/settings', (req, res) => {
   res.json(settings);
 });
 
+// === API บันทึก prompt + keyword ===
 app.post('/admin/settings', (req, res) => {
-  const { prompt, imageTriggers } = req.body;
-  if (!prompt || !Array.isArray(imageTriggers)) return res.status(400).send('Missing data');
+  const { prompt, keywords } = req.body;
+
+  if (!prompt || !Array.isArray(keywords)) {
+    return res.status(400).send('Invalid input');
+  }
 
   settings.prompt = prompt;
-  settings.imageTriggers = imageTriggers;
+  settings.keywords = keywords;
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
@@ -116,10 +130,11 @@ app.post('/admin/settings', (req, res) => {
   }
 });
 
-// Start server
+// === Start server ===
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
+
 
 
 // const express = require('express');
