@@ -13,8 +13,6 @@ const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
-
-// LINE client
 const lineClient = new Client(lineConfig);
 
 // Middleware
@@ -22,31 +20,33 @@ app.use(middleware(lineConfig));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ==== โหลด settings.json ====
+// Load setting.json
 const settingsPath = path.join(__dirname, 'setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้เราช่วยไหมคะ' };
-if (fs.existsSync(settingsPath)) {
-  const data = fs.readFileSync(settingsPath);
-  settings = JSON.parse(data);
+try {
+  if (fs.existsSync(settingsPath)) {
+    const data = fs.readFileSync(settingsPath, 'utf-8');
+    settings = JSON.parse(data);
+  }
+} catch (err) {
+  console.error('❌ Error loading setting.json:', err.message);
 }
 
-// ==== Webhook สำหรับ LINE ====
+// LINE webhook
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
     const results = await Promise.all(events.map(handleEvent));
     res.json(results);
   } catch (err) {
-    console.error('Webhook error:', err);
+    console.error('Webhook error:', err.message);
     res.status(500).end();
   }
 });
 
-// ==== ฟังก์ชันตอบกลับ LINE ====
+// ChatGPT reply
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return Promise.resolve(null);
-  }
+  if (event.type !== 'message' || event.message.type !== 'text') return null;
 
   const userMessage = event.message.text;
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
@@ -71,34 +71,46 @@ async function handleEvent(event) {
     console.error('OpenAI error:', err.response?.data || err.message);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ชั่วคราว',
+      text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
     });
   }
 }
 
-// ==== แสดงหน้า admin.html ====
+// === หน้า /admin ===
 app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+  const filePath = path.join(__dirname, 'admin.html');
+  res.sendFile(filePath, err => {
+    if (err) {
+      console.error('❌ Error sending admin.html:', err.message);
+      res.status(500).send('Internal Server Error');
+    }
+  });
 });
 
-// ==== ✅ API: โหลด prompt ปัจจุบัน ====
+// === API โหลด settings ===
 app.get('/admin/settings', (req, res) => {
   res.json({ prompt: settings.prompt });
 });
 
-// ==== ✅ API: บันทึก prompt ใหม่ ====
+// === API บันทึก prompt ใหม่ ===
 app.post('/admin/settings', (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).send('Missing prompt');
+
   settings.prompt = prompt;
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-  res.status(200).send('Prompt saved');
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    res.status(200).send('Prompt saved');
+  } catch (err) {
+    console.error('❌ Failed to write setting.json:', err.message);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
-// ==== เริ่มเซิร์ฟเวอร์ ====
 app.listen(PORT, () => {
   console.log(`🚀 Server is running at http://localhost:${PORT}`);
 });
+
 
 
 
