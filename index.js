@@ -122,15 +122,17 @@ async function handleEvent(event) {
 
 // === Admin Panel ===
 app.get('/admin', (req, res) => {
-  // --- FIX: Inject the server's base URL into the HTML before sending it ---
   fs.readFile(path.join(__dirname, 'admin.html'), 'utf8', (err, html) => {
     if (err) {
       console.error("Could not read admin.html", err);
       return res.status(500).send("Could not load admin page.");
     }
-    // Construct the base URL from the request headers
-    const backendUrl = `${req.protocol}://${req.get('host')}`;
-    // Inject a global JS variable with the base URL
+    // --- FIX for Mixed Content on platforms like Railway ---
+    // Use 'x-forwarded-proto' header to determine the correct protocol (http vs https)
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const backendUrl = `${protocol}://${req.get('host')}`;
+    
+    // Inject a global JS variable with the correct base URL
     const modifiedHtml = html.replace(
       '</head>',
       `<script>window.API_BASE_URL = '${backendUrl}';</script></head>`
