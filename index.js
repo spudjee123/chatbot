@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const { Configuration, OpenAIApi } = require('openai');
@@ -17,15 +18,14 @@ const lineConfig = {
 };
 const lineClient = new Client(lineConfig);
 
-// === Multer สำหรับรับไฟล์ ===
+// Multer สำหรับรับไฟล์
 const upload = multer({ dest: 'uploads/' });
 
-// === Middleware ทั่วไป ===
-app.use(express.json());
+// Static files (ไม่ใช้ express.json() เพื่อไม่ให้กระทบ req.rawBody)
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// === โหลด setting.json ===
+// โหลด setting.json
 const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
 try {
@@ -37,28 +37,35 @@ try {
   console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// === LINE Webhook เฉพาะ path นี้เท่านั้น ===
-app.post('/webhook', middleware(lineConfig), async (req, res) => {
-  try {
-    const events = req.body.events;
-    const results = await Promise.all(events.map(handleEvent));
-    res.json(results);
-  } catch (err) {
-    console.error('❌ LINE Webhook error:', err.message);
-    res.status(500).end();
+// ✅ LINE Webhook: ต้องใช้ body-parser แบบ raw
+app.post(
+  '/webhook',
+  bodyParser.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+  middleware(lineConfig),
+  async (req, res) => {
+    try {
+      const events = req.body.events;
+      const results = await Promise.all(events.map(handleEvent));
+      res.json(results);
+    } catch (err) {
+      console.error('❌ LINE Webhook error:', err.message);
+      res.status(500).send('Server Error');
+    }
   }
-});
+);
 
-// === ฟังก์ชันตอบกลับ LINE ===
+// ฟังก์ชันตอบกลับ LINE
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
   const userMessage = event.message.text.toLowerCase();
 
-  // === ตรวจจับ Keyword ===
   for (const keywordObj of settings.keywords || []) {
-    if (userMessage.includes(keywordObj.keyword.toLowerCase())) {
-      // ส่งรูปตาม keyword
+    if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
       const imageMessages = keywordObj.images.map(url => ({
         type: 'image',
         originalContentUrl: url,
@@ -68,12 +75,11 @@ async function handleEvent(event) {
     }
   }
 
-  // === ตอบกลับด้วย GPT ถ้าไม่ตรง keyword ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
-    const openai = new OpenAIApi(new Configuration({
-      apiKey: process.env.GPT_API_KEY,
-    }));
+    const openai = new OpenAIApi(
+      new Configuration({ apiKey: process.env.GPT_API_KEY })
+    );
     const completion = await openai.createChatCompletion({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
@@ -93,17 +99,16 @@ async function handleEvent(event) {
   }
 }
 
-// === หน้า /admin สำหรับตั้งค่า prompt และ keywords ===
+// หน้า admin
 app.get('/admin', (req, res) => {
   res.sendFile(path.resolve('admin.html'));
 });
 
-// === API: ดึงค่า setting.json ===
+// ดึง/บันทึก setting.json
 app.get('/admin/settings', (req, res) => {
   res.json(settings);
 });
 
-// === API: บันทึกค่า setting.json ===
 app.post('/admin/settings', (req, res) => {
   const { prompt, keywords } = req.body;
   if (prompt) settings.prompt = prompt;
@@ -118,7 +123,7 @@ app.post('/admin/settings', (req, res) => {
   }
 });
 
-// === API: อัปโหลดภาพ ===
+// อัปโหลดรูป
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     const filename = file.filename;
@@ -127,8 +132,7 @@ app.post('/upload', upload.array('images'), (req, res) => {
   res.json({ urls });
 });
 
-// === เริ่มเซิร์ฟเวอร์ ===
+// เริ่มเซิร์ฟเวอร์
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
-
