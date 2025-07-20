@@ -1,6 +1,192 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  <meta charset="UTF-8">
+  <title>จัดการคำตอบ LINE Bot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Prompt', sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #222;
+    }
+    .group {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    label {
+      font-weight: 600;
+      margin-top: 10px;
+      display: block;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-family: 'Prompt', sans-serif;
+    }
+    textarea {
+      height: 60px;
+    }
+    .flex-fields {
+      background: #f9f9f9;
+      padding: 10px;
+      border: 1px dashed #ccc;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      background: #00b14f;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    .danger {
+      background: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+  <h1>ตั้งค่าระบบตอบกลับ LINE Bot</h1>
+
+  <label>ข้อความเมื่อไม่พบคำตอบ:</label>
+  <textarea id="prompt"></textarea>
+
+  <div id="container"></div>
+
+  <button onclick="addGroup()">➕ เพิ่มกลุ่ม</button>
+  <button onclick="saveAll()">💾 บันทึกทั้งหมด</button>
+
+  <script>
+    let data = { prompt: '', keywords: [] };
+
+    async function loadData() {
+      const res = await fetch('/admin/settings');
+      data = await res.json();
+      document.getElementById('prompt').value = data.prompt || '';
+      render();
+    }
+
+    function render() {
+      const container = document.getElementById('container');
+      container.innerHTML = '';
+
+      data.keywords.forEach((item, idx) => {
+        const group = document.createElement('div');
+        group.className = 'group';
+        group.innerHTML = `
+          <label>คำค้น (คั่นด้วย ,):</label>
+          <input type="text" value="${item.keywords?.join(',') || ''}" onchange="updateKeywords(${idx}, this.value)">
+
+          <label>ประเภท:</label>
+          <select onchange="updateType(${idx}, this.value)">
+            <option value="text" ${item.type === 'text' ? 'selected' : ''}>ข้อความ</option>
+            <option value="flex1" ${item.type === 'flex1' ? 'selected' : ''}>Flex 1</option>
+            <option value="flex2" ${item.type === 'flex2' ? 'selected' : ''}>Flex 2</option>
+          </select>
+
+          <label>ข้อความตอบกลับ:</label>
+          <textarea onchange="updateText(${idx}, this.value)">${item.text || ''}</textarea>
+
+          <div class="flex-fields" id="flex-${idx}" style="${item.type.startsWith('flex') ? '' : 'display:none'}">
+            <label>หัวข้อ:</label>
+            <input type="text" value="${item.template?.header || ''}" onchange="updateTemplate(${idx}, 'header', this.value)">
+
+            <label>เนื้อหา:</label>
+            <textarea onchange="updateTemplate(${idx}, 'body', this.value)">${item.template?.body || ''}</textarea>
+
+            <label>ลิงก์รูปภาพ:</label>
+            <input type="text" value="${item.template?.image || ''}" onchange="updateTemplate(${idx}, 'image', this.value)">
+
+            <label>ปุ่มข้อความ:</label>
+            <input type="text" value="${item.template?.button?.label || ''}" onchange="updateTemplate(${idx}, 'buttonLabel', this.value)">
+
+            <label>ลิงก์ปุ่ม:</label>
+            <input type="text" value="${item.template?.button?.url || ''}" onchange="updateTemplate(${idx}, 'buttonUrl', this.value)">
+          </div>
+
+          <button class="danger" onclick="removeGroup(${idx})">ลบกลุ่ม</button>
+        `;
+        container.appendChild(group);
+      });
+    }
+
+    function updateKeywords(idx, val) {
+      data.keywords[idx].keywords = val.split(',').map(x => x.trim());
+    }
+
+    function updateText(idx, val) {
+      data.keywords[idx].text = val;
+    }
+
+    function updateType(idx, val) {
+      data.keywords[idx].type = val;
+      render();
+    }
+
+    function updateTemplate(idx, key, val) {
+      const template = data.keywords[idx].template = data.keywords[idx].template || {};
+      if (key === 'buttonLabel') {
+        template.button = template.button || {};
+        template.button.label = val;
+      } else if (key === 'buttonUrl') {
+        template.button = template.button || {};
+        template.button.url = val;
+      } else {
+        template[key] = val;
+      }
+    }
+
+    function addGroup() {
+      data.keywords.push({ keywords: [], text: '', type: 'text', template: {} });
+      render();
+    }
+
+    function removeGroup(idx) {
+      if (confirm('ยืนยันการลบกลุ่มนี้?')) {
+        data.keywords.splice(idx, 1);
+        render();
+      }
+    }
+
+    async function saveAll() {
+      data.prompt = document.getElementById('prompt').value;
+      const res = await fetch('/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        alert('✅ บันทึกแล้ว');
+      } else {
+        alert('❌ ไม่สามารถบันทึกได้');
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="th">
+<head>
   <meta charset="UTF-8" />
   <title>จัดการคำตอบอัตโนมัติ LINE Bot</title>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
@@ -195,4 +381,4 @@
     loadData();
   </script>
 </body>
-</html>
+</html> -->
