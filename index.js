@@ -27,9 +27,7 @@ const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // === Body Parser ===
-app.use(bodyParser.json({
-  verify: (req, res, buf) => { req.rawBody = buf; }
-}));
+app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
 // === Settings ===
@@ -53,8 +51,8 @@ function validateSignature(body, secret, signature) {
   return hash === signature;
 }
 
-// === Webhook ===
-app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
+// === Webhook === (ใช้ express.raw() เพื่อให้ signature ตรวจสอบได้)
+app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
     console.error('❌ Invalid LINE signature');
@@ -63,7 +61,7 @@ app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
 
   let body;
   try {
-    body = JSON.parse(req.body.toString());
+    body = JSON.parse(req.body.toString('utf-8'));
   } catch (err) {
     console.error('❌ JSON parse error:', err.message);
     return res.status(400).send('Invalid JSON');
@@ -71,9 +69,9 @@ app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
 
   try {
     const results = await Promise.all(body.events.map(handleEvent));
-    res.status(200).json(results); // ✅ MUST reply with 200 to LINE
+    res.status(200).json(results); // ✅ MUST respond with 200 OK
   } catch (err) {
-    console.error('❌ Webhook error:', err);
+    console.error('❌ Webhook error:', err.stack || err.message);
     res.status(500).send('Server error');
   }
 });
@@ -81,9 +79,9 @@ app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
 // === LINE Message Handling ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
+
   const userMessage = event.message.text.toLowerCase();
 
-  // === Match Keyword ===
   for (const keywordObj of settings.keywords || []) {
     if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
       const imageMessages = keywordObj.images.map(url => ({
@@ -104,7 +102,7 @@ async function handleEvent(event) {
     }
   }
 
-  // === GPT Prompt ===
+  // === GPT ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
@@ -162,7 +160,6 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
 
 // const express = require('express');
 // const fs = require('fs');
