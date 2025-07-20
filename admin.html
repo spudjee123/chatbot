@@ -1,120 +1,124 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <title>ตั้งค่าแชทบอท</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  />
+  <meta charset="UTF-8" />
+  <title>จัดการ Keyword Bot</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    .group {
+      border: 1px solid #ccc;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    label {
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 5px;
+    }
+    img {
+      height: 100px;
+      margin: 5px;
+    }
+    button {
+      margin-top: 5px;
+      padding: 5px 10px;
+    }
+  </style>
 </head>
-<body class="bg-light">
-  <div class="container py-4">
-    <h2 class="mb-4 text-primary">💬 ตั้งค่า ChatBot</h2>
-
-    <div class="mb-3">
-      <label class="form-label">Prompt เริ่มต้น:</label>
-      <textarea id="prompt" class="form-control" rows="3"></textarea>
-    </div>
-
-    <div id="keywordGroups"></div>
-
-    <button class="btn btn-success mt-3" onclick="addGroup()">➕ เพิ่มกลุ่ม Keyword</button>
-    <button class="btn btn-primary mt-3 ms-2" onclick="save()">💾 บันทึก</button>
-  </div>
+<body>
+  <h1>จัดการคำตอบอัตโนมัติ LINE Bot</h1>
+  <div id="container"></div>
+  <button onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
+  <hr />
+  <button onclick="saveAll()">✅ บันทึกทั้งหมด</button>
 
   <script>
-    let data = {};
+    let data = { keywords: [] };
 
-    async function loadSettings() {
-      const res = await fetch('/admin/settings');
+    async function loadData() {
+      const res = await fetch('/setting.json');
       data = await res.json();
-      document.getElementById('prompt').value = data.prompt || '';
-      renderGroups();
+      render();
     }
 
-    function renderGroups() {
-      const container = document.getElementById('keywordGroups');
+    function render() {
+      const container = document.getElementById('container');
       container.innerHTML = '';
-      (data.keywords || []).forEach((group, idx) => {
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'border rounded p-3 mb-3 bg-white';
-        groupDiv.innerHTML = `
-          <h5>กลุ่มที่ ${idx + 1}</h5>
+      data.keywords.forEach((item, idx) => {
+        const group = document.createElement('div');
+        group.className = 'group';
+        group.innerHTML = `
           <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" class="form-control mb-2" id="kw_${idx}" value="${group.keywords.join(',')}">
-
+          <input type="text" value="${item.keys.join(',')}" onchange="updateKey(${idx}, this.value)">
+          
           <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" class="form-control mb-2" id="img_${idx}" value="${group.images.join(',')}">
+          <input type="text" value="${item.images.join(',')}" onchange="updateImages(${idx}, this.value)">
 
-          <div class="mb-2">รูปภาพตัวอย่าง:</div>
-          <div class="mb-3 d-flex flex-wrap gap-2">
-            ${group.images.map(url => `<img src="${url}" style="height: 80px;">`).join('')}
-          </div>
+          <div>รูปภาพตัวอย่าง:</div>
+          <div>${item.images.map(img => `<img src="${img.replace('http://', 'https://')}" />`).join('')}</div>
 
           <label>อัปโหลดรูปเพิ่มเติม:</label>
-          <input type="file" class="form-control mb-2" multiple onchange="uploadImages(event, ${idx})">
+          <input type="file" multiple onchange="uploadImages(event, ${idx})" />
 
-          <button class="btn btn-danger btn-sm" onclick="removeGroup(${idx})">ลบกลุ่มนี้</button>
+          <br><br>
+          <button onclick="removeGroup(${idx})">❌ ลบกลุ่มนี้</button>
         `;
-        container.appendChild(groupDiv);
+        container.appendChild(group);
       });
     }
 
+    function updateKey(idx, val) {
+      data.keywords[idx].keys = val.split(',').map(x => x.trim());
+    }
+
+    function updateImages(idx, val) {
+      data.keywords[idx].images = val.split(',').map(x => x.trim());
+    }
+
     function addGroup() {
-      data.keywords = data.keywords || [];
-      data.keywords.push({ keywords: [], images: [] });
-      renderGroups();
+      data.keywords.push({ keys: [], images: [] });
+      render();
     }
 
     function removeGroup(idx) {
       data.keywords.splice(idx, 1);
-      renderGroups();
+      render();
     }
 
     async function uploadImages(event, idx) {
-      const files = Array.from(event.target.files);
+      const files = event.target.files;
       const formData = new FormData();
-      files.forEach(file => formData.append('images', file));
-
+      for (const file of files) {
+        formData.append('images', file);
+      }
       const res = await fetch('/upload', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
-
       const urls = await res.json();
       data.keywords[idx].images = data.keywords[idx].images.concat(urls.urls);
-      renderGroups();
+      render();
     }
 
-    async function save() {
-      const prompt = document.getElementById('prompt').value;
-      const newKeywords = [];
-
-      (data.keywords || []).forEach((_, idx) => {
-        const keywords = document.getElementById(`kw_${idx}`).value.split(',').map(x => x.trim()).filter(x => x);
-        const images = document.getElementById(`img_${idx}`).value.split(',').map(x => x.trim()).filter(x => x);
-        newKeywords.push({ keywords, images });
-      });
-
-      const payload = { prompt, keywords: newKeywords };
-      const res = await fetch('/admin/settings', {
+    async function saveAll() {
+      await fetch('/admin/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(data)
       });
-
-      if (res.ok) {
-        alert('✅ บันทึกสำเร็จ!');
-        loadSettings();
-      } else {
-        alert('❌ บันทึกไม่สำเร็จ');
-      }
+      alert('✅ บันทึกสำเร็จแล้ว');
     }
 
-    loadSettings();
+    loadData();
   </script>
 </body>
 </html>
+
 
