@@ -48,6 +48,11 @@
           <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
           <input type="text" class="form-control mb-2" id="img_${idx}" value="${group.images.join(',')}">
 
+          <div class="mb-2">รูปภาพตัวอย่าง:</div>
+          <div class="mb-3 d-flex flex-wrap gap-2">
+            ${group.images.map(url => `<img src="${url}" style="height: 80px;">`).join('')}
+          </div>
+
           <label>อัปโหลดรูปเพิ่มเติม:</label>
           <input type="file" class="form-control mb-2" multiple onchange="uploadImages(event, ${idx})">
 
@@ -79,7 +84,7 @@
       });
 
       const urls = await res.json();
-      data.keywords[idx].images = data.keywords[idx].images.concat(urls);
+      data.keywords[idx].images = data.keywords[idx].images.concat(urls.urls);
       renderGroups();
     }
 
@@ -112,3 +117,4 @@
   </script>
 </body>
 </html>
+
