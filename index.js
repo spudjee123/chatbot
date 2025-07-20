@@ -21,9 +21,13 @@ const lineClient = new Client(lineConfig);
 // === OpenAI Config ===
 const openai = new OpenAI({ apiKey: process.env.GPT_API_KEY });
 
-// === Multer Upload ===
+// === Multer สำหรับอัปโหลด ===
 const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// === Middleware สำหรับ route อื่น ๆ ยกเว้น webhook
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // === Settings ===
 const settingsPath = path.resolve('setting.json');
@@ -40,18 +44,14 @@ function loadSettings() {
 }
 loadSettings();
 
-// ✅ Use JSON parser only for non-/webhook routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// ✅ LINE Signature Validation
+// === Validate LINE Signature ===
 function validateSignature(rawBody, secret, signature) {
   if (!Buffer.isBuffer(rawBody)) return false;
   const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
   return hash === signature;
 }
 
-// ✅ Webhook: ต้องใช้ raw body parser เท่านั้น
+// === LINE Webhook (ต้องใช้ raw body เท่านั้น) ===
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
@@ -69,18 +69,20 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
   try {
     const results = await Promise.all(body.events.map(handleEvent));
-    res.status(200).json(results);
+    res.status(200).json(results); // ✅ ต้องส่ง 200 กลับไป
   } catch (err) {
     console.error('❌ Webhook error:', err.stack || err.message);
     res.status(500).send('Server error');
   }
 });
 
-// === LINE Message Handling
+// === จัดการข้อความจากผู้ใช้ ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
+
   const userMessage = event.message.text.toLowerCase();
 
+  // === ตรวจสอบ keyword ที่ match ===
   for (const keywordObj of settings.keywords || []) {
     if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
       const imageMessages = keywordObj.images.map(url => ({
@@ -101,11 +103,11 @@ async function handleEvent(event) {
     }
   }
 
-  // === GPT Prompt ===
+  // === ตอบด้วย GPT ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -147,7 +149,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
   }
 });
 
-// === Upload Images ===
+// === อัปโหลดรูป ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
@@ -155,7 +157,7 @@ app.post('/upload', upload.array('images'), (req, res) => {
   res.json({ urls });
 });
 
-// === Start ===
+// === Start Server ===
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
