@@ -41,7 +41,11 @@
     let settings = {};
     const keywordsContainer = document.getElementById('keywords-container');
 
-    // --- Functions to create UI elements ---
+    /**
+     * Function to create a single response pair (text + image)
+     * @param {object} data - The data for the response pair.
+     * @returns {HTMLElement} - The div element for the response pair.
+     */
     function createResponsePair(data = {}) {
       const id = `resp-${Date.now()}-${Math.random()}`;
       const div = document.createElement('div');
@@ -59,13 +63,31 @@
       return div;
     }
 
+    /**
+     * Function to add a new response pair to a specific keyword block.
+     * This function is called by the "เพิ่มชุดคำตอบ" button's onclick event.
+     * @param {string} blockId - The ID of the keyword block to add the response to.
+     */
+    function addResponseToBlock(blockId) {
+      const container = document.querySelector(`#${blockId} .responses-container`);
+      if (container) {
+        container.appendChild(createResponsePair());
+      } else {
+        console.error('Could not find responses container for block ID:', blockId);
+      }
+    }
+
+    /**
+     * Function to create a full keyword block UI.
+     * @param {object} data - The data for the keyword block.
+     */
     function addKeywordBlock(data = {}) {
       const id = `kw-block-${Date.now()}-${Math.random()}`;
       const div = document.createElement('div');
       div.className = 'keyword-block';
       div.id = id;
       
-      const responsesHtml = (data.responses || [{ text: '', image: '' }])
+      const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ text: '', image: '' }])
         .map(resp => createResponsePair(resp).outerHTML).join('');
 
       div.innerHTML = `
@@ -87,17 +109,17 @@
       `;
       keywordsContainer.appendChild(div);
     }
-
-    function addResponseToBlock(blockId) {
-      const container = document.querySelector(`#${blockId} .responses-container`);
-      container.appendChild(createResponsePair());
-    }
     
+    /**
+     * Function to add a new, empty keyword block to the page.
+     */
     function addKeyword() {
       addKeywordBlock();
     }
 
-    // --- Functions to load and save data ---
+    /**
+     * Function to load settings from the server and render the UI.
+     */
     async function loadSettings() {
       try {
         const res = await fetch('/admin/settings');
@@ -105,13 +127,18 @@
 
         document.getElementById('prompt').value = settings.prompt || '';
         keywordsContainer.innerHTML = '';
-        (settings.keywords || []).forEach(addKeywordBlock);
+        if (settings.keywords && settings.keywords.length > 0) {
+          settings.keywords.forEach(addKeywordBlock);
+        }
       } catch (error) {
         console.error("Failed to load settings:", error);
         document.getElementById('status').innerText = '❌ โหลดการตั้งค่าไม่สำเร็จ';
       }
     }
 
+    /**
+     * Function to collect data from the UI and save it to the server.
+     */
     async function saveSettings() {
       const statusEl = document.getElementById('status');
       statusEl.innerText = 'กำลังบันทึก...';
@@ -124,7 +151,7 @@
         const responses = Array.from(responsePairs).map(pair => ({
           text: pair.querySelector('.response-text').value.trim(),
           image: pair.querySelector('.response-image').value.trim(),
-        })).filter(r => r.text || r.image); // เอาเฉพาะอันที่มีข้อมูล
+        })).filter(r => r.text || r.image);
 
         return {
           keywords: div.querySelector('.keywords').value.split(',').map(s => s.trim()).filter(Boolean),
@@ -149,142 +176,8 @@
       setTimeout(() => statusEl.innerText = '', 3000);
     }
 
-    // Initial load
+    // Initial load when the page is opened.
     loadSettings();
   </script>
 </body>
 </html>
-
-
-<!-- <!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <title>ตั้งค่า LINE Bot</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      max-width: 900px;
-      margin: auto;
-      padding: 2rem;
-      background: #f7f7f7;
-      color: #333;
-    }
-    h1 {
-      text-align: center;
-      color: #4CAF50;
-    }
-    textarea, input, select {
-      width: 100%;
-      margin: 0.5rem 0;
-      padding: 0.5rem;
-      font-size: 1rem;
-    }
-    .keyword-block {
-      background: #fff;
-      padding: 1rem;
-      margin: 1rem 0;
-      border: 1px solid #ccc;
-    }
-    button {
-      background: #4CAF50;
-      color: white;
-      border: none;
-      padding: 0.7rem 1.5rem;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-    .small {
-      font-size: 0.85rem;
-      color: #888;
-    }
-  </style>
-</head>
-<body>
-  <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
-
-  <label>Prompt สำหรับ GPT</label>
-  <textarea id="prompt" rows="3"></textarea>
-
-  <div id="keywords-container"></div>
-  <button onclick="addKeyword()">➕ เพิ่ม Keyword</button>
-
-  <hr>
-  <button onclick="saveSettings()">💾 บันทึกการตั้งค่า</button>
-  <p id="status" class="small"></p>
-
-  <script>
-    let settings = {};
-    const container = document.getElementById('keywords-container');
-
-    async function loadSettings() {
-      const res = await fetch('/admin/settings');
-      settings = await res.json();
-
-      document.getElementById('prompt').value = settings.prompt || '';
-      container.innerHTML = '';
-      (settings.keywords || []).forEach(addKeywordBlock);
-    }
-
-    function addKeywordBlock(data = {}) {
-      const div = document.createElement('div');
-      div.className = 'keyword-block';
-
-      div.innerHTML = `
-        <label>คำค้นหา (คั่นด้วย ,)</label>
-        <input type="text" class="keywords" value="${(data.keywords || []).join(',')}">
-
-        <label>ข้อความตอบกลับ</label>
-        <textarea class="text" rows="2">${data.text || ''}</textarea>
-
-        <label>ลิงก์รูปภาพ (คั่นด้วย ,)</label>
-        <input type="text" class="images" value="${(data.images || []).join(',')}">
-
-        <label>ประเภท Flex Template</label>
-        <select class="type">
-          ${Object.keys(settings.flex_templates || {}).map(type =>
-            `<option value="${type}" ${type === data.type ? 'selected' : ''}>${type}</option>`
-          ).join('')}
-        </select>
-
-        <button onclick="this.parentElement.remove()">❌ ลบ</button>
-      `;
-      container.appendChild(div);
-    }
-
-    function addKeyword() {
-      addKeywordBlock({ keywords: [], text: '', images: [], type: 'flex1' });
-    }
-
-    async function saveSettings() {
-      const prompt = document.getElementById('prompt').value;
-      const keywordBlocks = container.querySelectorAll('.keyword-block');
-
-      const keywords = Array.from(keywordBlocks).map(div => ({
-        keywords: div.querySelector('.keywords').value.split(',').map(s => s.trim()),
-        text: div.querySelector('.text').value.trim(),
-        images: div.querySelector('.images').value.split(',').map(s => s.trim()),
-        type: div.querySelector('.type').value
-      }));
-
-      const body = {
-        prompt,
-        keywords,
-        flex_templates: settings.flex_templates
-      };
-
-      const res = await fetch('/admin/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      document.getElementById('status').innerText =
-        res.ok ? '✅ บันทึกเรียบร้อย' : '❌ บันทึกล้มเหลว';
-    }
-
-    loadSettings();
-  </script>
-</body>
-</html> -->
-
