@@ -3,16 +3,19 @@
   "keywords": [
     {
       "keywords": ["โปรโมชั่น", "โปรพิเศษ"],
+      "type": "flex_promo",
+      "text": "โปรโมชั่นใหม่มาแล้ว!",
       "images": [
-        "https://yourdomain.com/images/promo1.jpg",
-        "https://yourdomain.com/images/promo2.jpg"
+        "https://example.com/promo1.jpg",
+        "https://example.com/promo2.jpg"
       ]
     },
     {
-      "keywords": ["แนะนำเกม"],
+      "keywords": ["เกม", "แนะนำเกม"],
+      "type": "flex_game",
+      "text": "เกมสนุกๆ ที่คุณไม่ควรพลาด!",
       "images": [
-        "https://yourdomain.com/images/game1.jpg",
-        "https://yourdomain.com/images/game2.jpg"
+        "https://example.com/game1.jpg"
       ]
     }
   ]

@@ -2,6 +2,189 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
+  <title>จัดการ Flex Message - LINE Bot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Prompt', sans-serif;
+      padding: 30px;
+      background-color: #f5f7fa;
+      color: #333;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    textarea, select, input[type="text"], input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .group {
+      background-color: #fff;
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin: 8px 0 5px;
+    }
+    img {
+      height: 80px;
+      margin: 5px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background-color: #00b14f;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #00903f;
+    }
+    .danger {
+      background-color: #e74c3c;
+    }
+    .danger:hover {
+      background-color: #c0392b;
+    }
+  </style>
+</head>
+<body>
+  <h1>จัดการ Flex Message - LINE Bot</h1>
+
+  <label>ข้อความเริ่มต้น (Prompt เมื่อไม่พบคำค้น):</label>
+  <textarea id="prompt"></textarea>
+
+  <div id="container"></div>
+
+  <button onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
+  <button onclick="saveAll()">✅ บันทึกทั้งหมด</button>
+
+  <script>
+    let data = { prompt: '', keywords: [] };
+
+    async function loadData() {
+      const res = await fetch('/admin/settings');
+      data = await res.json();
+      document.getElementById('prompt').value = data.prompt || '';
+      render();
+    }
+
+    function render() {
+      const container = document.getElementById('container');
+      container.innerHTML = '';
+
+      data.keywords.forEach((item, idx) => {
+        const group = document.createElement('div');
+        group.className = 'group';
+        group.innerHTML = `
+          <label>คำค้น (คั่นด้วย ,):</label>
+          <input type="text" value="${item.keywords.join(',')}" onchange="updateKeywords(${idx}, this.value)">
+
+          <label>ข้อความ:</label>
+          <input type="text" value="${item.text || ''}" onchange="updateText(${idx}, this.value)">
+
+          <label>ประเภท Flex:</label>
+          <select onchange="updateType(${idx}, this.value)">
+            <option value="flex_promo" ${item.type === 'flex_promo' ? 'selected' : ''}>โปรโมชั่น (flex_promo)</option>
+            <option value="flex_game" ${item.type === 'flex_game' ? 'selected' : ''}>เกม (flex_game)</option>
+            <option value="flex_default" ${!item.type || item.type === 'flex_default' ? 'selected' : ''}>ทั่วไป (flex_default)</option>
+          </select>
+
+          <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
+          <input type="text" value="${(item.images || []).join(',')}" onchange="updateImages(${idx}, this.value)">
+
+          <label>รูปตัวอย่าง:</label>
+          <div>${(item.images || []).map(img => `<img src="${img}" />`).join('')}</div>
+
+          <label>อัปโหลดรูป:</label>
+          <input type="file" multiple onchange="uploadImages(event, ${idx})" />
+
+          <button class="danger" onclick="removeGroup(${idx})">❌ ลบกลุ่มนี้</button>
+        `;
+        container.appendChild(group);
+      });
+    }
+
+    function updateKeywords(idx, val) {
+      data.keywords[idx].keywords = val.split(',').map(x => x.trim());
+    }
+
+    function updateText(idx, val) {
+      data.keywords[idx].text = val;
+    }
+
+    function updateImages(idx, val) {
+      data.keywords[idx].images = val.split(',').map(x => x.trim());
+    }
+
+    function updateType(idx, val) {
+      data.keywords[idx].type = val;
+    }
+
+    function addGroup() {
+      data.keywords.push({ keywords: [], text: '', images: [], type: 'flex_default' });
+      render();
+    }
+
+    function removeGroup(idx) {
+      if (confirm('ต้องการลบกลุ่มนี้หรือไม่?')) {
+        data.keywords.splice(idx, 1);
+        render();
+      }
+    }
+
+    async function uploadImages(event, idx) {
+      const files = event.target.files;
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('images', file);
+      }
+
+      const res = await fetch('/upload', { method: 'POST', body: formData });
+      const result = await res.json();
+      data.keywords[idx].images = (data.keywords[idx].images || []).concat(result.urls);
+      render();
+    }
+
+    async function saveAll() {
+      data.prompt = document.getElementById('prompt').value;
+      const res = await fetch('/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        alert('✅ บันทึกสำเร็จ');
+        loadData();
+      } else {
+        alert('❌ บันทึกล้มเหลว');
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
   <title>จัดการคำตอบอัตโนมัติ LINE Bot</title>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -192,4 +375,4 @@
     loadData();
   </script>
 </body>
-</html>
+</html> -->
