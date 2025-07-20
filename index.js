@@ -42,7 +42,12 @@ function loadSettings() {
     settings = JSON.parse(data);
     console.log('✅ Settings loaded successfully');
   } catch (err) {
-    console.error('❌ Error loading settings.json:', err.message);
+    // Don't log error if the file simply doesn't exist on first start
+    if (err.code !== 'ENOENT') {
+      console.error('❌ Error loading settings.json:', err.message);
+    } else {
+      console.log('ℹ️ settings.json not found. A new one will be created on first save.');
+    }
   }
 }
 loadSettings();
@@ -127,12 +132,9 @@ app.get('/admin', (req, res) => {
       console.error("Could not read admin.html", err);
       return res.status(500).send("Could not load admin page.");
     }
-    // --- FIX for Mixed Content on platforms like Railway ---
-    // Use 'x-forwarded-proto' header to determine the correct protocol (http vs https)
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const backendUrl = `${protocol}://${req.get('host')}`;
     
-    // Inject a global JS variable with the correct base URL
     const modifiedHtml = html.replace(
       '</head>',
       `<script>window.API_BASE_URL = '${backendUrl}';</script></head>`
@@ -152,19 +154,25 @@ app.post('/admin/settings', (req, res) => {
   settings.flex_templates = flex_templates || settings.flex_templates;
 
   try {
+    // --- Added more detailed logging for debugging persistence issues ---
+    const fullPath = path.resolve(settingsPath);
+    console.log(`Attempting to write to persistent storage at: ${fullPath}`);
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    console.log(`✅ Successfully wrote to ${fullPath}`);
     loadSettings();
     res.sendStatus(200);
   } catch (err) {
-    console.error('❌ Save settings error:', err.message);
-    res.status(500).send('Save failed');
+    const fullPath = path.resolve(settingsPath);
+    console.error(`❌❌❌ CRITICAL: Failed to write settings to ${fullPath}. Data will be lost on restart.`, err);
+    res.status(500).send('Save failed. Check server logs for details.');
   }
 });
 
 // === Upload Route ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map((file) => {
-    return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    return `${protocol}://${req.get('host')}/uploads/${file.filename}`;
   });
   res.json({ urls });
 });
