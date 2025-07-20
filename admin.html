@@ -13,6 +13,16 @@
     }
     h1 {
       color: #333;
+      margin-bottom: 20px;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+      font-family: 'Prompt', sans-serif;
+      font-size: 14px;
     }
     .group {
       background-color: #fff;
@@ -68,17 +78,22 @@
 </head>
 <body>
   <h1>จัดการคำตอบอัตโนมัติ LINE Bot</h1>
+
+  <label>ข้อความเริ่มต้น (Prompt):</label>
+  <textarea id="prompt" rows="4"></textarea>
+
   <div id="container"></div>
 
   <button class="add-button" onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
   <button class="save-button" onclick="saveAll()">✅ บันทึกทั้งหมด</button>
 
   <script>
-    let data = { keywords: [] };
+    let data = { keywords: [], prompt: '' };
 
     async function loadData() {
       const res = await fetch('/admin/settings');
       data = await res.json();
+      document.getElementById('prompt').value = data.prompt || '';
       render();
     }
 
@@ -90,10 +105,10 @@
         group.className = 'group';
         group.innerHTML = `
           <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" value="${item.keywords.join(',')}" onchange="updateKey(${idx}, this.value)">
-          
+          <input type="text" value="${item.keywords.join(',') || ''}" onchange="updateKeywords(${idx}, this.value)">
+
           <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" value="${item.images.join(',')}" onchange="updateImages(${idx}, this.value)">
+          <input type="text" value="${item.images.join(',') || ''}" onchange="updateImages(${idx}, this.value)">
 
           <label>รูปภาพตัวอย่าง:</label>
           <div>${item.images.map(img => `<img src="${img}" />`).join('')}</div>
@@ -107,7 +122,7 @@
       });
     }
 
-    function updateKey(idx, val) {
+    function updateKeywords(idx, val) {
       data.keywords[idx].keywords = val.split(',').map(x => x.trim());
     }
 
@@ -143,141 +158,21 @@
     }
 
     async function saveAll() {
-      await fetch('/admin/settings', {
+      data.prompt = document.getElementById('prompt').value;
+      const res = await fetch('/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      alert('✅ บันทึกสำเร็จแล้ว');
+      if (res.ok) {
+        alert('✅ บันทึกสำเร็จแล้ว');
+        loadData();
+      } else {
+        alert('❌ บันทึกล้มเหลว');
+      }
     }
 
     loadData();
   </script>
 </body>
 </html>
-
-
-<!-- <!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8" />
-  <title>จัดการ Keyword Bot</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    .group {
-      border: 1px solid #ccc;
-      padding: 15px;
-      margin-bottom: 20px;
-      border-radius: 8px;
-    }
-    label {
-      font-weight: bold;
-    }
-    input[type="text"] {
-      width: 100%;
-      margin-bottom: 10px;
-      padding: 5px;
-    }
-    img {
-      height: 100px;
-      margin: 5px;
-    }
-    button {
-      margin-top: 5px;
-      padding: 5px 10px;
-    }
-  </style>
-</head>
-<body>
-  <h1>จัดการคำตอบอัตโนมัติ LINE Bot</h1>
-  <div id="container"></div>
-  <button onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
-  <hr />
-  <button onclick="saveAll()">✅ บันทึกทั้งหมด</button>
-
-  <script>
-    let data = { keywords: [] };
-
-    async function loadData() {
-      const res = await fetch('/setting.json');
-      data = await res.json();
-      render();
-    }
-
-    function render() {
-      const container = document.getElementById('container');
-      container.innerHTML = '';
-      data.keywords.forEach((item, idx) => {
-        const group = document.createElement('div');
-        group.className = 'group';
-        group.innerHTML = `
-          <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" value="${item.keys.join(',')}" onchange="updateKey(${idx}, this.value)">
-          
-          <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" value="${item.images.join(',')}" onchange="updateImages(${idx}, this.value)">
-
-          <div>รูปภาพตัวอย่าง:</div>
-          <div>${item.images.map(img => `<img src="${img.replace('http://', 'https://')}" />`).join('')}</div>
-
-          <label>อัปโหลดรูปเพิ่มเติม:</label>
-          <input type="file" multiple onchange="uploadImages(event, ${idx})" />
-
-          <br><br>
-          <button onclick="removeGroup(${idx})">❌ ลบกลุ่มนี้</button>
-        `;
-        container.appendChild(group);
-      });
-    }
-
-    function updateKey(idx, val) {
-      data.keywords[idx].keys = val.split(',').map(x => x.trim());
-    }
-
-    function updateImages(idx, val) {
-      data.keywords[idx].images = val.split(',').map(x => x.trim());
-    }
-
-    function addGroup() {
-      data.keywords.push({ keys: [], images: [] });
-      render();
-    }
-
-    function removeGroup(idx) {
-      data.keywords.splice(idx, 1);
-      render();
-    }
-
-    async function uploadImages(event, idx) {
-      const files = event.target.files;
-      const formData = new FormData();
-      for (const file of files) {
-        formData.append('images', file);
-      }
-      const res = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const urls = await res.json();
-      data.keywords[idx].images = data.keywords[idx].images.concat(urls.urls);
-      render();
-    }
-
-    async function saveAll() {
-      await fetch('/admin/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      alert('✅ บันทึกสำเร็จแล้ว');
-    }
-
-    loadData();
-  </script>
-</body>
-</html> -->
-
-

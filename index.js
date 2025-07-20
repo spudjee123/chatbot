@@ -6,25 +6,28 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 require('dotenv').config();
 
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 const { Client } = require('@line/bot-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LINE config
+// === LINE Bot Config ===
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-// Uploads
+// === OpenAI Config ===
+const openai = new OpenAI({ apiKey: process.env.GPT_API_KEY });
+
+// === Upload Middleware ===
 const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.urlencoded({ extended: true }));
 
-// Load settings
+// === Load Settings ===
 const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
 function loadSettings() {
@@ -38,16 +41,16 @@ function loadSettings() {
 }
 loadSettings();
 
-// Signature validation
-function validateSignature(body, secret, signature) {
+// === Validate Signature ===
+function validateLineSignature(body, secret, signature) {
   const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
   return hash === signature;
 }
 
-// Webhook
-app.post('/webhook', bodyParser.raw({ type: '*/*' }), (req, res) => {
+// === Webhook Route ===
+app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
-  if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
+  if (!signature || !validateLineSignature(req.body, lineConfig.channelSecret, signature)) {
     console.error('❌ Invalid signature');
     return res.status(401).send('Invalid signature');
   }
@@ -60,17 +63,19 @@ app.post('/webhook', bodyParser.raw({ type: '*/*' }), (req, res) => {
     return res.status(400).send('Invalid JSON');
   }
 
-  Promise.all(body.events.map(handleEvent))
-    .then(results => res.json(results))
-    .catch(err => {
-      console.error('❌ Webhook error:', err.message);
-      res.status(500).send('Server error');
-    });
+  try {
+    const results = await Promise.all(body.events.map(handleEvent));
+    res.json(results);
+  } catch (err) {
+    console.error('❌ Webhook error:', err);
+    res.status(500).send('Server error');
+  }
 });
 
-// LINE Message Handling
+// === Event Handler ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
+
   const userMessage = event.message.text.toLowerCase();
 
   for (const keywordObj of settings.keywords || []) {
@@ -84,16 +89,17 @@ async function handleEvent(event) {
     }
   }
 
-  // GPT fallback
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
-    const openai = new OpenAIApi(new Configuration({ apiKey: process.env.GPT_API_KEY }));
-    const completion = await openai.createChatCompletion({
-      model: 'gpt-4o-mini',
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
     });
-    const reply = completion.data.choices[0].message.content;
-    return lineClient.replyMessage(event.replyToken, { type: 'text', text: reply });
+    const reply = completion.choices[0].message.content;
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: reply,
+    });
   } catch (err) {
     console.error('❌ GPT error:', err.message);
     return lineClient.replyMessage(event.replyToken, {
@@ -103,25 +109,23 @@ async function handleEvent(event) {
   }
 }
 
-// Admin UI
+// === Admin UI ===
 app.get('/admin', (req, res) => {
   res.sendFile(path.resolve('admin.html'));
 });
 
-// Load settings to admin
 app.get('/admin/settings', (req, res) => {
   res.json(settings);
 });
 
-// Save settings
 app.post('/admin/settings', express.json(), (req, res) => {
   const { prompt, keywords } = req.body;
-  if (prompt) settings.prompt = prompt;
-  if (keywords) settings.keywords = keywords;
+  if (typeof prompt === 'string') settings.prompt = prompt;
+  if (Array.isArray(keywords)) settings.keywords = keywords;
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    loadSettings(); // ✅ update after save
+    loadSettings(); // ✅ reload after save
     res.status(200).send('บันทึกแล้ว');
   } catch (err) {
     console.error('❌ Save settings failed:', err.message);
@@ -129,7 +133,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
   }
 });
 
-// Upload image
+// === Upload API ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
@@ -137,10 +141,11 @@ app.post('/upload', upload.array('images'), (req, res) => {
   res.json({ urls });
 });
 
-// Start server
+// === Start Server ===
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
 
 
 
