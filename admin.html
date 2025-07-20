@@ -19,6 +19,7 @@
     .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
     label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
   </style>
+  <!-- The script containing window.API_BASE_URL will be injected here by the server -->
 </head>
 <body>
   <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
@@ -41,13 +42,8 @@
     let settings = {};
     const keywordsContainer = document.getElementById('keywords-container');
 
-    /**
-     * Function to create a single response pair (text + image)
-     * @param {object} data - The data for the response pair.
-     * @returns {HTMLElement} - The div element for the response pair.
-     */
     function createResponsePair(data = {}) {
-      const id = `resp-${Date.now()}-${Math.random()}`;
+      const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const div = document.createElement('div');
       div.className = 'response-pair';
       div.id = id;
@@ -63,11 +59,6 @@
       return div;
     }
 
-    /**
-     * Function to add a new response pair to a specific keyword block.
-     * This function is called by the "เพิ่มชุดคำตอบ" button's onclick event.
-     * @param {string} blockId - The ID of the keyword block to add the response to.
-     */
     function addResponseToBlock(blockId) {
       const container = document.querySelector(`#${blockId} .responses-container`);
       if (container) {
@@ -77,12 +68,8 @@
       }
     }
 
-    /**
-     * Function to create a full keyword block UI.
-     * @param {object} data - The data for the keyword block.
-     */
     function addKeywordBlock(data = {}) {
-      const id = `kw-block-${Date.now()}-${Math.random()}`;
+      const id = `kw-block-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const div = document.createElement('div');
       div.className = 'keyword-block';
       div.id = id;
@@ -110,19 +97,19 @@
       keywordsContainer.appendChild(div);
     }
     
-    /**
-     * Function to add a new, empty keyword block to the page.
-     */
     function addKeyword() {
       addKeywordBlock();
     }
 
-    /**
-     * Function to load settings from the server and render the UI.
-     */
     async function loadSettings() {
       try {
-        const res = await fetch('/admin/settings');
+        const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
+        const res = await fetch(apiUrl);
+
+        if (!res.ok) {
+            throw new Error(`Server returned ${res.status}: ${await res.text()}`);
+        }
+        
         settings = await res.json();
 
         document.getElementById('prompt').value = settings.prompt || '';
@@ -136,9 +123,6 @@
       }
     }
 
-    /**
-     * Function to collect data from the UI and save it to the server.
-     */
     async function saveSettings() {
       const statusEl = document.getElementById('status');
       statusEl.innerText = 'กำลังบันทึก...';
@@ -166,7 +150,8 @@
         flex_templates: settings.flex_templates
       };
 
-      const res = await fetch('/admin/settings', {
+      const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -176,7 +161,7 @@
       setTimeout(() => statusEl.innerText = '', 3000);
     }
 
-    // Initial load when the page is opened.
+    // Initial load
     loadSettings();
   </script>
 </body>
