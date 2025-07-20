@@ -71,9 +71,9 @@ app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
 
   try {
     const results = await Promise.all(body.events.map(handleEvent));
-    res.json(results);
+    res.status(200).json(results); // ✅ MUST reply with 200 to LINE
   } catch (err) {
-    console.error('❌ Webhook error:', err.message);
+    console.error('❌ Webhook error:', err);
     res.status(500).send('Server error');
   }
 });
@@ -92,7 +92,6 @@ async function handleEvent(event) {
         previewImageUrl: url,
       }));
 
-      // === Fallback ถ้าส่งรูปไม่สำเร็จ
       try {
         return await lineClient.replyMessage(event.replyToken, imageMessages);
       } catch (err) {
@@ -105,7 +104,7 @@ async function handleEvent(event) {
     }
   }
 
-  // === GPT Prompt
+  // === GPT Prompt ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
@@ -143,7 +142,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    loadSettings(); // รีโหลดใหม่
+    loadSettings();
     res.status(200).send('บันทึกแล้ว');
   } catch (err) {
     console.error('❌ Save settings failed:', err.message);
@@ -163,7 +162,6 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
 
 
 // const express = require('express');
