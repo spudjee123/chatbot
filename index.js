@@ -2,7 +2,6 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const bodyParser = require('body-parser');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -22,12 +21,12 @@ const lineClient = new Client(lineConfig);
 // === OpenAI Config ===
 const openai = new OpenAI({ apiKey: process.env.GPT_API_KEY });
 
-// === Multer Config ===
+// === Multer ===
 const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// === Body Parser ===
-app.use(bodyParser.json());
+// === JSON Parser (non-raw) สำหรับ route อื่น ๆ
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // === Settings ===
@@ -45,13 +44,13 @@ function loadSettings() {
 }
 loadSettings();
 
-// === LINE Signature Validation ===
+// === LINE Signature Check
 function validateSignature(body, secret, signature) {
   const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
   return hash === signature;
 }
 
-// === Webhook === (ใช้ express.raw() เพื่อให้ signature ตรวจสอบได้)
+// ✅ Webhook route — ใช้ raw body เท่านั้น!!
 app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
@@ -69,14 +68,14 @@ app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
 
   try {
     const results = await Promise.all(body.events.map(handleEvent));
-    res.status(200).json(results); // ✅ MUST respond with 200 OK
+    res.status(200).json(results);
   } catch (err) {
     console.error('❌ Webhook error:', err.stack || err.message);
     res.status(500).send('Server error');
   }
 });
 
-// === LINE Message Handling ===
+// === LINE Message Handling
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
@@ -102,7 +101,6 @@ async function handleEvent(event) {
     }
   }
 
-  // === GPT ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
@@ -148,7 +146,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
   }
 });
 
-// === Upload Image ===
+// === Upload Images ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
@@ -156,10 +154,11 @@ app.post('/upload', upload.array('images'), (req, res) => {
   res.json({ urls });
 });
 
-// === Start Server ===
+// === Start ===
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
 
 // const express = require('express');
 // const fs = require('fs');
