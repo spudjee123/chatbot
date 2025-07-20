@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <title>จัดการ Flex Message - LINE Bot</title>
+  <title>จัดการคำตอบอัตโนมัติ LINE Bot</title>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
   <style>
     body {
@@ -15,12 +15,15 @@
       color: #333;
       margin-bottom: 20px;
     }
-    textarea, select, input[type="text"], input[type="file"] {
+    textarea {
       width: 100%;
+      height: 80px;
       padding: 10px;
-      border-radius: 6px;
+      border-radius: 5px;
       border: 1px solid #ccc;
-      margin-bottom: 10px;
+      box-sizing: border-box;
+      margin-bottom: 20px;
+      font-family: 'Prompt', sans-serif;
       font-size: 14px;
     }
     .group {
@@ -34,7 +37,15 @@
     label {
       font-weight: 600;
       display: block;
-      margin: 8px 0 5px;
+      margin: 10px 0 5px;
+    }
+    input[type="text"], input[type="file"], select {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
     }
     img {
       height: 80px;
@@ -46,10 +57,10 @@
       background-color: #00b14f;
       color: white;
       border: none;
-      padding: 10px 20px;
+      padding: 8px 15px;
       border-radius: 5px;
       cursor: pointer;
-      margin-right: 10px;
+      margin-top: 10px;
     }
     button:hover {
       background-color: #00903f;
@@ -60,18 +71,23 @@
     .danger:hover {
       background-color: #c0392b;
     }
+    .add-button, .save-button {
+      font-size: 16px;
+      padding: 10px 20px;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>จัดการ Flex Message - LINE Bot</h1>
+  <h1>จัดการคำตอบอัตโนมัติ LINE Bot</h1>
 
   <label>ข้อความเริ่มต้น (Prompt เมื่อไม่พบคำค้น):</label>
   <textarea id="prompt"></textarea>
 
   <div id="container"></div>
 
-  <button onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
-  <button onclick="saveAll()">✅ บันทึกทั้งหมด</button>
+  <button class="add-button" onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
+  <button class="save-button" onclick="saveAll()">✅ บันทึกทั้งหมด</button>
 
   <script>
     let data = { prompt: '', keywords: [] };
@@ -86,31 +102,27 @@
     function render() {
       const container = document.getElementById('container');
       container.innerHTML = '';
-
       data.keywords.forEach((item, idx) => {
         const group = document.createElement('div');
         group.className = 'group';
         group.innerHTML = `
           <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" value="${item.keywords.join(',')}" onchange="updateKeywords(${idx}, this.value)">
+          <input type="text" value="${item.keywords?.join(',') || ''}" onchange="updateKeywords(${idx}, this.value)">
 
-          <label>ข้อความ:</label>
-          <input type="text" value="${item.text || ''}" onchange="updateText(${idx}, this.value)">
-
-          <label>ประเภท Flex:</label>
+          <label>ประเภทข้อความ (text-image / flex1 / flex2):</label>
           <select onchange="updateType(${idx}, this.value)">
-            <option value="flex_promo" ${item.type === 'flex_promo' ? 'selected' : ''}>โปรโมชั่น (flex_promo)</option>
-            <option value="flex_game" ${item.type === 'flex_game' ? 'selected' : ''}>เกม (flex_game)</option>
-            <option value="flex_default" ${!item.type || item.type === 'flex_default' ? 'selected' : ''}>ทั่วไป (flex_default)</option>
+            <option value="text-image" ${item.type === 'text-image' ? 'selected' : ''}>Text + Image</option>
+            <option value="flex1" ${item.type === 'flex1' ? 'selected' : ''}>Flex 1</option>
+            <option value="flex2" ${item.type === 'flex2' ? 'selected' : ''}>Flex 2</option>
           </select>
 
           <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" value="${(item.images || []).join(',')}" onchange="updateImages(${idx}, this.value)">
+          <input type="text" value="${item.images?.join(',') || ''}" onchange="updateImages(${idx}, this.value)">
 
-          <label>รูปตัวอย่าง:</label>
+          <label>รูปภาพตัวอย่าง:</label>
           <div>${(item.images || []).map(img => `<img src="${img}" />`).join('')}</div>
 
-          <label>อัปโหลดรูป:</label>
+          <label>อัปโหลดรูปเพิ่มเติม:</label>
           <input type="file" multiple onchange="uploadImages(event, ${idx})" />
 
           <button class="danger" onclick="removeGroup(${idx})">❌ ลบกลุ่มนี้</button>
@@ -123,25 +135,22 @@
       data.keywords[idx].keywords = val.split(',').map(x => x.trim());
     }
 
-    function updateText(idx, val) {
-      data.keywords[idx].text = val;
-    }
-
     function updateImages(idx, val) {
       data.keywords[idx].images = val.split(',').map(x => x.trim());
     }
 
     function updateType(idx, val) {
+      if (!['text-image', 'flex1', 'flex2'].includes(val)) val = 'text-image';
       data.keywords[idx].type = val;
     }
 
     function addGroup() {
-      data.keywords.push({ keywords: [], text: '', images: [], type: 'flex_default' });
+      data.keywords.push({ keywords: [], images: [], type: 'text-image' });
       render();
     }
 
     function removeGroup(idx) {
-      if (confirm('ต้องการลบกลุ่มนี้หรือไม่?')) {
+      if (confirm('ต้องการลบกลุ่มนี้จริงหรือไม่?')) {
         data.keywords.splice(idx, 1);
         render();
       }
@@ -153,22 +162,31 @@
       for (const file of files) {
         formData.append('images', file);
       }
-
-      const res = await fetch('/upload', { method: 'POST', body: formData });
-      const result = await res.json();
-      data.keywords[idx].images = (data.keywords[idx].images || []).concat(result.urls);
+      const res = await fetch('/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const urls = await res.json();
+      data.keywords[idx].images = (data.keywords[idx].images || []).concat(urls.urls);
       render();
     }
 
     async function saveAll() {
       data.prompt = document.getElementById('prompt').value;
+      for (let i = 0; i < data.keywords.length; i++) {
+        if (!data.keywords[i].type) data.keywords[i].type = 'text-image';
+        if (!data.keywords[i].keywords) data.keywords[i].keywords = [];
+        if (!data.keywords[i].images) data.keywords[i].images = [];
+      }
+
       const res = await fetch('/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(data)
       });
+
       if (res.ok) {
-        alert('✅ บันทึกสำเร็จ');
+        alert('✅ บันทึกสำเร็จแล้ว');
         loadData();
       } else {
         alert('❌ บันทึกล้มเหลว');
@@ -180,199 +198,3 @@
 </body>
 </html>
 
-
-<!-- <!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8" />
-  <title>จัดการคำตอบอัตโนมัติ LINE Bot</title>
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      font-family: 'Prompt', sans-serif;
-      padding: 40px;
-      background: linear-gradient(to bottom right, #e8f0ff, #ffffff);
-      color: #333;
-      line-height: 1.6;
-    }
-    h1 {
-      font-size: 28px;
-      color: #222;
-      margin-bottom: 20px;
-    }
-    textarea, input[type="text"], input[type="file"] {
-      width: 100%;
-      padding: 12px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      margin-bottom: 15px;
-      font-family: 'Prompt', sans-serif;
-    }
-    label {
-      font-weight: 600;
-      margin-bottom: 6px;
-      display: block;
-    }
-    .group {
-      background-color: #ffffff;
-      padding: 20px;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-      margin-bottom: 25px;
-    }
-    img {
-      height: 80px;
-      margin: 5px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-    }
-    .btn {
-      padding: 10px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-    }
-    .btn-green {
-      background-color: #00b14f;
-      color: white;
-      margin-right: 10px;
-    }
-    .btn-green:hover {
-      background-color: #00903f;
-    }
-    .btn-red {
-      background-color: #e74c3c;
-      color: white;
-    }
-    .btn-red:hover {
-      background-color: #c0392b;
-    }
-    .flex-buttons {
-      margin-top: 20px;
-    }
-  </style>
-</head>
-<body>
-  <h1>จัดการคำตอบอัตโนมัติ LINE Bot</h1>
-
-  <label for="prompt">ข้อความเริ่มต้น (Prompt เมื่อไม่พบคำค้น):</label>
-  <textarea id="prompt" placeholder="พิมพ์ข้อความเริ่มต้นที่ใช้กับ GPT เช่น สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ"></textarea>
-
-  <div id="container"></div>
-
-  <div class="flex-buttons">
-    <button class="btn btn-green" onclick="addGroup()">➕ เพิ่มกลุ่มใหม่</button>
-    <button class="btn btn-green" onclick="saveAll()">✅ บันทึกทั้งหมด</button>
-  </div>
-
-  <script>
-    let data = { prompt: '', keywords: [] };
-
-    async function loadData() {
-      try {
-        const res = await fetch('/admin/settings');
-        data = await res.json();
-        document.getElementById('prompt').value = data.prompt || '';
-        render();
-      } catch (err) {
-        alert('❌ โหลดข้อมูลล้มเหลว');
-        console.error(err);
-      }
-    }
-
-    function render() {
-      const container = document.getElementById('container');
-      container.innerHTML = '';
-      data.keywords.forEach((item, idx) => {
-        const group = document.createElement('div');
-        group.className = 'group';
-        group.innerHTML = `
-          <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" value="${item.keywords.join(',')}" onchange="updateKeywords(${idx}, this.value)">
-          
-          <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" value="${item.images.join(',')}" onchange="updateImages(${idx}, this.value)">
-
-          <label>รูปภาพตัวอย่าง:</label>
-          <div>${item.images.map(img => `<img src="${img}" />`).join('')}</div>
-
-          <label>อัปโหลดรูปเพิ่มเติม:</label>
-          <input type="file" multiple onchange="uploadImages(event, ${idx})" />
-
-          <button class="btn btn-red" onclick="removeGroup(${idx})">❌ ลบกลุ่มนี้</button>
-        `;
-        container.appendChild(group);
-      });
-    }
-
-    function updateKeywords(idx, val) {
-      data.keywords[idx].keywords = val.split(',').map(x => x.trim());
-    }
-
-    function updateImages(idx, val) {
-      data.keywords[idx].images = val.split(',').map(x => x.trim());
-    }
-
-    function addGroup() {
-      data.keywords.push({ keywords: [], images: [] });
-      render();
-    }
-
-    function removeGroup(idx) {
-      if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบกลุ่มนี้?')) {
-        data.keywords.splice(idx, 1);
-        render();
-      }
-    }
-
-    async function uploadImages(event, idx) {
-      const files = event.target.files;
-      const formData = new FormData();
-      for (const file of files) {
-        formData.append('images', file);
-      }
-      try {
-        const res = await fetch('/upload', {
-          method: 'POST',
-          body: formData
-        });
-        const urls = await res.json();
-        data.keywords[idx].images = data.keywords[idx].images.concat(urls.urls);
-        render();
-      } catch (err) {
-        alert('❌ อัปโหลดรูปภาพล้มเหลว');
-        console.error(err);
-      }
-    }
-
-    async function saveAll() {
-      data.prompt = document.getElementById('prompt').value;
-      try {
-        const res = await fetch('/admin/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        if (res.ok) {
-          alert('✅ บันทึกสำเร็จแล้ว');
-          loadData(); // โหลดใหม่เพื่ออัปเดต
-        } else {
-          alert('❌ บันทึกล้มเหลว');
-        }
-      } catch (err) {
-        alert('❌ เกิดข้อผิดพลาดระหว่างการบันทึก');
-        console.error(err);
-      }
-    }
-
-    loadData();
-  </script>
-</body>
-</html> -->
