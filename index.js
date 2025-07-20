@@ -17,122 +17,146 @@ const lineConfig = {
 };
 const lineClient = new Client(lineConfig);
 
-// === Multer Upload ===
+// === Upload config ===
 const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// === Static JSON Parser สำหรับ route อื่นๆ
+// === Static files and body parsers ===
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// === Raw body parser for webhook ===
-app.use('/webhook', express.raw({ type: '*/*' }));
-
-// === Settings ===
-const settingsPath = path.resolve('setting.json');
-let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [], flexTemplates: {} };
-
+// === Load setting.json ===
+const settingsPath = path.join(__dirname, 'setting.json');
+let settings = { prompt: '', keywords: [], flex_templates: {} };
 function loadSettings() {
   try {
-    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const data = fs.readFileSync(settingsPath, 'utf8');
+    settings = JSON.parse(data);
     console.log('✅ Settings loaded');
-  } catch (e) {
-    console.error('❌ Failed to load settings:', e.message);
+  } catch (err) {
+    console.error('❌ Failed to load settings:', err.message);
   }
 }
 loadSettings();
 
-// === Validate LINE Signature ===
-function validateSignature(body, secret, signature) {
-  const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
+// === Signature Validation ===
+function validateSignature(rawBody, secret, signature) {
+  const hash = crypto.createHmac('SHA256', secret).update(rawBody).digest('base64');
   return hash === signature;
 }
 
-// === LINE Webhook ===
-app.post('/webhook', async (req, res) => {
+// === Webhook with raw body ===
+app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
-  const isValid = validateSignature(req.body, lineConfig.channelSecret, signature);
-  if (!isValid) return res.status(401).send('Invalid signature');
+  if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
+    console.error('❌ Invalid signature');
+    return res.status(401).send('Invalid signature');
+  }
 
   let body;
   try {
     body = JSON.parse(req.body.toString('utf-8'));
-  } catch (e) {
+  } catch (err) {
+    console.error('❌ JSON parse error:', err.message);
     return res.status(400).send('Invalid JSON');
   }
 
-  try {
-    await Promise.all(body.events.map(handleEvent));
-    res.status(200).send('OK');
-  } catch (e) {
-    console.error('❌ Webhook error:', e);
-    res.status(500).send('Server Error');
-  }
+  const results = await Promise.all(body.events.map(handleEvent));
+  res.status(200).json(results);
 });
 
-// === Handle LINE Message ===
+// === Handle Message Events ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
-  const msg = event.message.text.toLowerCase();
+  const userText = event.message.text.toLowerCase();
 
-  for (const item of settings.keywords) {
-    if (item.keywords.some(k => msg.includes(k.toLowerCase()))) {
-      if (item.type === 'text') {
-        return lineClient.replyMessage(event.replyToken, { type: 'text', text: item.text });
+  for (const keywordObj of settings.keywords || []) {
+    const matched = keywordObj.keywords.some(k => userText.includes(k.toLowerCase()));
+    if (matched) {
+      const templateKey = keywordObj.type;
+      const template = settings.flex_templates[templateKey];
+      if (!template) {
+        console.warn(`⚠️ Template "${templateKey}" not found`);
+        break;
       }
 
-      if (item.type.startsWith('flex')) {
-        const template = settings.flexTemplates[item.type];
-        if (template) {
-          return lineClient.replyMessage(event.replyToken, {
-            type: 'flex',
-            altText: 'ข้อความจากระบบ',
-            contents: template,
-          });
+      const filled = JSON.parse(JSON.stringify(template));
+      const image = (keywordObj.images && keywordObj.images[0]) || '';
+      const text = keywordObj.text || '';
+
+      const fill = (obj) => {
+        for (let key in obj) {
+          if (typeof obj[key] === 'object') fill(obj[key]);
+          if (typeof obj[key] === 'string') {
+            obj[key] = obj[key].replace('{{image}}', image).replace('{{text}}', text);
+          }
         }
-      }
+      };
+      fill(filled);
+
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'flex',
+        altText: text || 'ข้อความจากระบบ',
+        contents: filled
+      });
     }
   }
 
-  // fallback
   return lineClient.replyMessage(event.replyToken, {
     type: 'text',
     text: settings.prompt || 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ',
   });
 }
 
-// === Upload ===
+// === Admin UI ===
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/admin/settings', (req, res) => {
+  res.json(settings);
+});
+
+app.post('/admin/settings', (req, res) => {
+  const { prompt, keywords } = req.body;
+  settings.prompt = prompt;
+  settings.keywords = keywords;
+
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    loadSettings();
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('❌ Failed to save settings:', err.message);
+    res.status(500).send('Save failed');
+  }
+});
+
+// === Upload Route ===
 app.post('/upload', upload.array('images'), (req, res) => {
-  const urls = req.files.map(file => `${req.protocol}://${req.get('host')}/uploads/${file.filename}`);
+  const urls = req.files.map(file => {
+    return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
+  });
   res.json({ urls });
 });
 
-// === Admin UI ===
-app.get('/admin', (req, res) => res.sendFile(path.resolve('admin.html')));
-app.get('/admin/settings', (req, res) => res.json(settings));
-app.post('/admin/settings', express.json(), (req, res) => {
-  settings = req.body;
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-  loadSettings();
-  res.send('OK');
-});
-
-// === Start Server ===
+// === Start server ===
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 
 
-// // === index.js ===
+
 // const express = require('express');
 // const fs = require('fs');
 // const path = require('path');
-// const multer = require('multer');
 // const crypto = require('crypto');
+// const multer = require('multer');
 // require('dotenv').config();
 
 // const { Client } = require('@line/bot-sdk');
+
 // const app = express();
 // const PORT = process.env.PORT || 3000;
 
@@ -143,188 +167,90 @@ app.listen(PORT, () => {
 // };
 // const lineClient = new Client(lineConfig);
 
-// // === Upload ===
+// // === Multer Upload ===
 // const upload = multer({ dest: 'uploads/' });
 // app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// // === Middlewares ===
+// // === Static JSON Parser สำหรับ route อื่นๆ
 // app.use(express.json());
 // app.use(express.urlencoded({ extended: true }));
 
+// // === Raw body parser for webhook ===
+// app.use('/webhook', express.raw({ type: '*/*' }));
+
 // // === Settings ===
 // const settingsPath = path.resolve('setting.json');
-// let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
+// let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [], flexTemplates: {} };
 
 // function loadSettings() {
 //   try {
-//     const content = fs.readFileSync(settingsPath, 'utf-8');
-//     settings = JSON.parse(content);
+//     settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 //     console.log('✅ Settings loaded');
-//   } catch (err) {
-//     console.error('❌ Load settings failed:', err.message);
+//   } catch (e) {
+//     console.error('❌ Failed to load settings:', e.message);
 //   }
 // }
 // loadSettings();
 
-// // === LINE Signature Validate ===
+// // === Validate LINE Signature ===
 // function validateSignature(body, secret, signature) {
 //   const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
 //   return hash === signature;
 // }
 
-// // === Webhook ===
-// app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
+// // === LINE Webhook ===
+// app.post('/webhook', async (req, res) => {
 //   const signature = req.headers['x-line-signature'];
-//   if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
-//     console.error('❌ Invalid LINE signature');
-//     return res.status(401).send('Invalid signature');
-//   }
+//   const isValid = validateSignature(req.body, lineConfig.channelSecret, signature);
+//   if (!isValid) return res.status(401).send('Invalid signature');
 
 //   let body;
 //   try {
 //     body = JSON.parse(req.body.toString('utf-8'));
-//   } catch (err) {
-//     console.error('❌ JSON parse error:', err.message);
+//   } catch (e) {
 //     return res.status(400).send('Invalid JSON');
 //   }
 
 //   try {
-//     const results = await Promise.all(body.events.map(handleEvent));
-//     res.status(200).json(results);
-//   } catch (err) {
-//     console.error('❌ Webhook error:', err.message);
-//     res.status(500).send('Server error');
+//     await Promise.all(body.events.map(handleEvent));
+//     res.status(200).send('OK');
+//   } catch (e) {
+//     console.error('❌ Webhook error:', e);
+//     res.status(500).send('Server Error');
 //   }
 // });
 
-// // === Flex Template Generator ===
-// function generateFlex(type, title, images) {
-//   switch (type) {
-//     case 'flex1':
-//       return {
-//         type: 'bubble',
-//         hero: images[0] && {
-//           type: 'image',
-//           url: images[0],
-//           size: 'full',
-//           aspectRatio: '20:13',
-//           aspectMode: 'cover'
-//         },
-//         body: {
-//           type: 'box',
-//           layout: 'vertical',
-//           contents: [
-//             { type: 'text', text: title || 'ไม่มีข้อความ', weight: 'bold', size: 'lg', color: '#ff5555', wrap: true },
-//             ...images.slice(1).map(url => ({
-//               type: 'image', url, size: 'xs', aspectMode: 'cover', margin: 'sm'
-//             }))
-//           ]
-//         }
-//       };
-
-//     case 'flex2':
-//       return {
-//         type: 'bubble',
-//         header: {
-//           type: 'box',
-//           layout: 'vertical',
-//           contents: [{ type: 'text', text: '🎉 โปรโมชั่นใหม่!', weight: 'bold', size: 'lg', color: '#00b14f' }]
-//         },
-//         hero: images[0] && {
-//           type: 'image',
-//           url: images[0],
-//           size: 'full',
-//           aspectRatio: '16:9',
-//           aspectMode: 'cover'
-//         },
-//         body: {
-//           type: 'box',
-//           layout: 'vertical',
-//           spacing: 'md',
-//           contents: [
-//             { type: 'text', text: title || 'ไม่มีข้อความ', wrap: true },
-//             ...images.slice(1).map(url => ({
-//               type: 'image', url, size: 'sm', aspectMode: 'cover', margin: 'md'
-//             }))
-//           ]
-//         }
-//       };
-
-//     default:
-//       return {
-//         type: 'bubble',
-//         hero: images[0] && {
-//           type: 'image',
-//           url: images[0],
-//           size: 'full',
-//           aspectRatio: '20:13',
-//           aspectMode: 'cover'
-//         },
-//         body: {
-//           type: 'box',
-//           layout: 'vertical',
-//           contents: [
-//             { type: 'text', text: title || 'ไม่มีข้อความ', weight: 'bold', size: 'md', wrap: true },
-//             ...images.slice(1).map(url => ({
-//               type: 'image', url, size: 'sm', aspectMode: 'cover', margin: 'md'
-//             }))
-//           ]
-//         }
-//       };
-//   }
-// }
-
-// // === LINE Handler ===
+// // === Handle LINE Message ===
 // async function handleEvent(event) {
-//   if (event.type !== 'message' || event.message.type !== 'text') return null;
-//   const text = event.message.text.toLowerCase();
+//   if (event.type !== 'message' || event.message.type !== 'text') return;
 
-//   for (const obj of settings.keywords || []) {
-//     if (obj.keywords.some(k => text.includes(k.toLowerCase()))) {
-//       if (obj.type === 'image') {
-//         const imageMsgs = obj.images.map(url => ({
-//           type: 'image', originalContentUrl: url, previewImageUrl: url
-//         }));
-//         return lineClient.replyMessage(event.replyToken, imageMsgs);
+//   const msg = event.message.text.toLowerCase();
+
+//   for (const item of settings.keywords) {
+//     if (item.keywords.some(k => msg.includes(k.toLowerCase()))) {
+//       if (item.type === 'text') {
+//         return lineClient.replyMessage(event.replyToken, { type: 'text', text: item.text });
 //       }
 
-//       if (obj.type?.startsWith('flex')) {
-//         const flex = generateFlex(obj.type, obj.text || '', obj.images || []);
-//         return lineClient.replyMessage(event.replyToken, {
-//           type: 'flex', altText: obj.text || 'มีข้อความใหม่', contents: flex
-//         });
+//       if (item.type.startsWith('flex')) {
+//         const template = settings.flexTemplates[item.type];
+//         if (template) {
+//           return lineClient.replyMessage(event.replyToken, {
+//             type: 'flex',
+//             altText: 'ข้อความจากระบบ',
+//             contents: template,
+//           });
+//         }
 //       }
 //     }
 //   }
 
+//   // fallback
 //   return lineClient.replyMessage(event.replyToken, {
 //     type: 'text',
-//     text: settings.prompt || 'สวัสดีค่ะ'
+//     text: settings.prompt || 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ',
 //   });
 // }
-
-// // === Admin ===
-// app.get('/admin', (req, res) => {
-//   res.sendFile(path.resolve('admin.html'));
-// });
-
-// app.get('/admin/settings', (req, res) => {
-//   res.json(settings);
-// });
-
-// app.post('/admin/settings', express.json(), (req, res) => {
-//   const { prompt, keywords } = req.body;
-//   if (prompt) settings.prompt = prompt;
-//   if (keywords) settings.keywords = keywords;
-//   try {
-//     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-//     loadSettings();
-//     res.send('บันทึกแล้ว');
-//   } catch (err) {
-//     console.error('❌ Save error:', err.message);
-//     res.status(500).send('บันทึกล้มเหลว');
-//   }
-// });
 
 // // === Upload ===
 // app.post('/upload', upload.array('images'), (req, res) => {
@@ -332,4 +258,18 @@ app.listen(PORT, () => {
 //   res.json({ urls });
 // });
 
-// app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+// // === Admin UI ===
+// app.get('/admin', (req, res) => res.sendFile(path.resolve('admin.html')));
+// app.get('/admin/settings', (req, res) => res.json(settings));
+// app.post('/admin/settings', express.json(), (req, res) => {
+//   settings = req.body;
+//   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+//   loadSettings();
+//   res.send('OK');
+// });
+
+// // === Start Server ===
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running at http://localhost:${PORT}`);
+// });
+

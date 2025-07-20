@@ -2,19 +2,66 @@
   "prompt": "สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ",
   "keywords": [
     {
-      "keywords": ["โปร", "โปรโมชั่น"],
+      "keywords": ["โปรโมชั่น", "โปร"],
       "type": "flex1",
-      "text": "ข้อความตอบกลับเฉพาะ",
-      "template": {
-        "header": "🔥 โปรโมชั่นพิเศษ!",
-        "body": "รายละเอียด...",
-        "image": "https://example.com/promo.jpg",
-        "button": {
-          "label": "ดูรายละเอียด",
-          "url": "https://yourlink.com"
-        }
+      "text": "ขอบคุณที่สนใจโปรโมชั่นของเรา",
+      "images": ["https://example.com/image1.jpg"]
+    },
+    {
+      "keywords": ["สอบถาม", "ติดต่อ"],
+      "type": "flex2",
+      "text": "หากต้องการสอบถามเพิ่มเติม กรุณาติดต่อแอดมิน",
+      "images": ["https://example.com/image2.jpg"]
+    }
+  ],
+  "flex_templates": {
+    "flex1": {
+      "type": "bubble",
+      "hero": {
+        "type": "image",
+        "url": "{{image}}",
+        "size": "full",
+        "aspectRatio": "20:13",
+        "aspectMode": "cover"
+      },
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "contents": [
+          {
+            "type": "text",
+            "text": "{{text}}",
+            "wrap": true,
+            "weight": "bold",
+            "size": "md"
+          }
+        ]
+      }
+    },
+    "flex2": {
+      "type": "bubble",
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "contents": [
+          {
+            "type": "text",
+            "text": "{{text}}",
+            "wrap": true,
+            "weight": "bold",
+            "size": "lg"
+          },
+          {
+            "type": "image",
+            "url": "{{image}}",
+            "size": "full",
+            "aspectRatio": "1.51:1",
+            "aspectMode": "fit"
+          }
+        ]
       }
     }
-  ]
+  }
 }
+
 
