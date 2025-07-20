@@ -21,11 +21,44 @@ const lineClient = new Client(lineConfig);
 // === OpenAI Config ===
 const openai = new OpenAI({ apiKey: process.env.GPT_API_KEY });
 
-// === Multer สำหรับอัปโหลด ===
+// === Multer Config ===
 const upload = multer({ dest: 'uploads/' });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// === Middleware สำหรับ route อื่น ๆ ยกเว้น webhook
+// ✅ Webhook ต้องมาก่อน body-parser ทั่วไป
+app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
+  const signature = req.headers['x-line-signature'];
+  const bodyBuffer = req.body;
+
+  if (!validateSignature(bodyBuffer, lineConfig.channelSecret, signature)) {
+    console.error('❌ Invalid LINE signature');
+    return res.status(401).send('Invalid signature');
+  }
+
+  let body;
+  try {
+    body = JSON.parse(bodyBuffer.toString('utf-8'));
+  } catch (err) {
+    console.error('❌ JSON parse error:', err.message);
+    return res.status(400).send('Invalid JSON');
+  }
+
+  try {
+    const results = await Promise.all(body.events.map(handleEvent));
+    res.status(200).json(results);
+  } catch (err) {
+    console.error('❌ Webhook error:', err.stack || err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// === Signature Validation ===
+function validateSignature(body, secret, signature) {
+  const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
+  return hash === signature;
+}
+
+// ✅ Apply body-parser to other routes AFTER webhook
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -44,45 +77,12 @@ function loadSettings() {
 }
 loadSettings();
 
-// === Validate LINE Signature ===
-function validateSignature(rawBody, secret, signature) {
-  if (!Buffer.isBuffer(rawBody)) return false;
-  const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-  return hash === signature;
-}
-
-// === LINE Webhook (ต้องใช้ raw body เท่านั้น) ===
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const signature = req.headers['x-line-signature'];
-  if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
-    console.error('❌ Invalid LINE signature');
-    return res.status(401).send('Invalid signature');
-  }
-
-  let body;
-  try {
-    body = JSON.parse(req.body.toString('utf-8'));
-  } catch (err) {
-    console.error('❌ JSON parse error:', err.message);
-    return res.status(400).send('Invalid JSON');
-  }
-
-  try {
-    const results = await Promise.all(body.events.map(handleEvent));
-    res.status(200).json(results); // ✅ ต้องส่ง 200 กลับไป
-  } catch (err) {
-    console.error('❌ Webhook error:', err.stack || err.message);
-    res.status(500).send('Server error');
-  }
-});
-
-// === จัดการข้อความจากผู้ใช้ ===
+// === LINE Message Handling ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
 
   const userMessage = event.message.text.toLowerCase();
 
-  // === ตรวจสอบ keyword ที่ match ===
   for (const keywordObj of settings.keywords || []) {
     if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
       const imageMessages = keywordObj.images.map(url => ({
@@ -103,11 +103,10 @@ async function handleEvent(event) {
     }
   }
 
-  // === ตอบด้วย GPT ===
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o-mini', // หรือใช้ gpt-4o-mini ก็ได้
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -149,7 +148,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
   }
 });
 
-// === อัปโหลดรูป ===
+// === Upload Image ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
