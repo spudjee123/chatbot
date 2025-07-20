@@ -1,85 +1,129 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
-const { middleware, Client } = require('@line/bot-sdk');
+const path = require('path');
+const multer = require('multer');
+const bodyParser = require('body-parser');
 require('dotenv').config();
 
+const { Configuration, OpenAIApi } = require('openai');
+const { middleware, Client, validateSignature } = require('@line/bot-sdk');
+
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-const settingsPath = path.join(__dirname, 'setting.json');
-const uploadDir = path.join(__dirname, 'public', 'uploads');
-
-// โหลด settings
-let settings = { keywords: [] };
-if (fs.existsSync(settingsPath)) {
-  settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-}
-
-// LINE config
+// LINE Bot config
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-// Middleware
-app.use(middleware(lineConfig));
-app.use(express.static('public'));
+// รับ raw body สำหรับ LINE signature validation
+app.use('/webhook', bodyParser.raw({ type: '*/*' }));
+
+// Static files และหน้า admin
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ===== LINE Webhook =====
-app.post('/webhook', async (req, res) => {
-  try {
-    const events = req.body.events;
-    await Promise.all(events.map(handleEvent));
-    res.sendStatus(200);
-  } catch (err) {
-    console.error('❌ Webhook Error:', err);
-    res.sendStatus(500);
-  }
+// Multer config
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
-// ===== จัดการข้อความที่ส่งมา =====
+// โหลด setting.json
+const settingsPath = path.resolve('setting.json');
+let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
+if (fs.existsSync(settingsPath)) {
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch (err) {
+    console.error('❌ โหลด setting.json ล้มเหลว:', err.message);
+  }
+}
+
+// ✅ Webhook (พร้อม validate signature)
+app.post('/webhook', (req, res) => {
+  const signature = req.headers['x-line-signature'];
+  const isValid = validateSignature(req.body, lineConfig.channelSecret, signature);
+
+  if (!isValid) {
+    console.error('❌ SignatureValidationFailed: no signature');
+    return res.status(401).send('Invalid signature');
+  }
+
+  const json = JSON.parse(req.body.toString());
+  Promise.all(json.events.map(handleEvent))
+    .then(result => res.json(result))
+    .catch(err => {
+      console.error('❌ Webhook handler error:', err.message);
+      res.status(500).end();
+    });
+});
+
+// ✅ ฟังก์ชันตอบกลับ LINE
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') return;
+  if (event.type !== 'message' || event.message.type !== 'text') return null;
 
-  const text = event.message.text.trim().toLowerCase();
-  const match = settings.keywords.find(group =>
-    group.keys.some(k => text.includes(k.toLowerCase()))
-  );
+  const text = event.message.text.toLowerCase();
 
-  if (match && match.images.length > 0) {
-    const messages = match.images.map(url => ({
-      type: 'image',
-      originalContentUrl: url,
-      previewImageUrl: url,
-    }));
-    await lineClient.replyMessage(event.replyToken, messages);
-  } else {
-    await lineClient.replyMessage(event.replyToken, {
+  for (const keywordObj of settings.keywords || []) {
+    if (keywordObj.keywords.some(k => text.includes(k.toLowerCase()))) {
+      const messages = keywordObj.images.map(url => ({
+        type: 'image',
+        originalContentUrl: url,
+        previewImageUrl: url,
+      }));
+      return lineClient.replyMessage(event.replyToken, messages);
+    }
+  }
+
+  // ถ้าไม่เจอ keyword → ใช้ GPT ตอบ
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${text}\n\nตอบกลับ:`;
+  try {
+    const openai = new OpenAIApi(new Configuration({ apiKey: process.env.GPT_API_KEY }));
+    const gpt = await openai.createChatCompletion({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: gpt.data.choices[0].message.content,
+    });
+  } catch (err) {
+    console.error('❌ GPT Error:', err.message);
+    return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
     });
   }
 }
 
-// ===== อัปโหลดรูปภาพ =====
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueName = Date.now() + '-' + Math.random().toString(36).substring(2);
-    const ext = path.extname(file.originalname);
-    cb(null, uniqueName + ext);
+// ✅ admin.html
+app.get('/admin', (req, res) => {
+  res.sendFile(path.resolve('admin.html'));
+});
+
+// ✅ โหลด / บันทึก settings
+app.get('/admin/settings', (req, res) => {
+  res.json(settings);
+});
+
+app.post('/admin/settings', (req, res) => {
+  try {
+    const { prompt, keywords } = req.body;
+    settings.prompt = prompt || '';
+    settings.keywords = keywords || [];
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    res.status(200).send('saved');
+  } catch (err) {
+    console.error('❌ บันทึก settings ผิดพลาด:', err.message);
+    res.status(500).send('save failed');
   }
 });
-const upload = multer({ storage });
 
+// ✅ Upload รูป
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file =>
     `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
@@ -87,21 +131,9 @@ app.post('/upload', upload.array('images'), (req, res) => {
   res.json({ urls });
 });
 
-// ===== API บันทึก setting.json =====
-app.post('/admin/save', (req, res) => {
-  fs.writeFileSync(settingsPath, JSON.stringify(req.body, null, 2));
-  settings = req.body;
-  res.sendStatus(200);
-});
-
-// ===== โหลดหน้า admin.html =====
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
-});
-
-// ===== Start =====
-app.listen(port, () => {
-  console.log(`✅ Server is running on port ${port}`);
+// ✅ Start
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
 
 
