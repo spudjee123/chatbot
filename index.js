@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const crypto = require('crypto');
-const { Client, middleware } = require('@line/bot-sdk');
-const { Configuration, OpenAIApi } = require('openai');
+const { Client } = require('@line/bot-sdk');
+const OpenAI = require('openai');
 require('dotenv').config();
 
 const app = express();
@@ -17,10 +17,10 @@ const lineConfig = {
 };
 const lineClient = new Client(lineConfig);
 
-// === OpenAI Config ===
-const openai = new OpenAIApi(new Configuration({
+// === OpenAI Config (Updated) ===
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-}));
+});
 
 // === Middlewares ===
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -78,7 +78,7 @@ app.post('/webhook', async (req, res) => {
     });
 });
 
-// === Handle LINE Message ===
+// === Handle LINE Message (Updated) ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
@@ -103,7 +103,7 @@ async function handleEvent(event) {
 
   // === ถ้าไม่เจอ keyword → ใช้ GPT สร้างข้อความตอบกลับ
   try {
-    const gptRes = await openai.createChatCompletion({
+    const gptRes = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: settings.prompt || 'คุณคือพนักงานบริการลูกค้า PG DOG' },
@@ -111,7 +111,7 @@ async function handleEvent(event) {
       ],
     });
 
-    const gptReply = gptRes.data.choices[0].message.content;
+    const gptReply = gptRes.choices[0].message.content;
 
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
@@ -164,4 +164,3 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
