@@ -3,96 +3,108 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const bodyParser = require('body-parser');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const { Configuration, OpenAIApi } = require('openai');
-const { middleware, Client, validateSignature } = require('@line/bot-sdk');
+const { Client, middleware } = require('@line/bot-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// LINE Bot config
+// === LINE Bot Config ===
 const lineConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const lineClient = new Client(lineConfig);
 
-// รับ raw body สำหรับ LINE signature validation
-app.use('/webhook', bodyParser.raw({ type: '*/*' }));
+// === Middleware Upload ===
+const upload = multer({ dest: 'uploads/' });
 
-// Static files และหน้า admin
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.json());
+// === Static Files ===
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Multer config
-const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
-
-// โหลด setting.json
+// === โหลด Settings ===
 const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
-if (fs.existsSync(settingsPath)) {
-  try {
-    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-  } catch (err) {
-    console.error('❌ โหลด setting.json ล้มเหลว:', err.message);
+try {
+  if (fs.existsSync(settingsPath)) {
+    const content = fs.readFileSync(settingsPath, 'utf-8');
+    settings = JSON.parse(content);
   }
+} catch (err) {
+  console.error('❌ โหลด setting.json ไม่สำเร็จ:', err.message);
 }
 
-// ✅ Webhook (พร้อม validate signature)
-app.post('/webhook', (req, res) => {
-  const signature = req.headers['x-line-signature'];
-  const isValid = validateSignature(req.body, lineConfig.channelSecret, signature);
+// === ตรวจสอบ Signature ด้วยตัวเอง ===
+function validateSignature(body, secret, signature) {
+  const hash = crypto
+    .createHmac('SHA256', secret)
+    .update(body)
+    .digest('base64');
+  return hash === signature;
+}
 
-  if (!isValid) {
+// === LINE Webhook ===
+app.post('/webhook', bodyParser.raw({ type: '*/*' }), (req, res) => {
+  const signature = req.headers['x-line-signature'];
+  if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
     console.error('❌ SignatureValidationFailed: no signature');
     return res.status(401).send('Invalid signature');
   }
 
-  const json = JSON.parse(req.body.toString());
-  Promise.all(json.events.map(handleEvent))
-    .then(result => res.json(result))
+  let body;
+  try {
+    body = JSON.parse(req.body.toString());
+  } catch (err) {
+    console.error('❌ JSON parse error:', err.message);
+    return res.status(400).send('Invalid JSON');
+  }
+
+  Promise.all(body.events.map(handleEvent))
+    .then(results => res.json(results))
     .catch(err => {
-      console.error('❌ Webhook handler error:', err.message);
-      res.status(500).end();
+      console.error('❌ Webhook Handler Error:', err.message);
+      res.status(500).send('Server Error');
     });
 });
 
-// ✅ ฟังก์ชันตอบกลับ LINE
+// === Handle LINE Event ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
-
-  const text = event.message.text.toLowerCase();
+  const userMessage = event.message.text.toLowerCase();
 
   for (const keywordObj of settings.keywords || []) {
-    if (keywordObj.keywords.some(k => text.includes(k.toLowerCase()))) {
-      const messages = keywordObj.images.map(url => ({
+    if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
+      const imageMessages = keywordObj.images.map(url => ({
         type: 'image',
         originalContentUrl: url,
         previewImageUrl: url,
       }));
-      return lineClient.replyMessage(event.replyToken, messages);
+      return lineClient.replyMessage(event.replyToken, imageMessages);
     }
   }
 
-  // ถ้าไม่เจอ keyword → ใช้ GPT ตอบ
-  const prompt = `${settings.prompt}\n\nลูกค้า: ${text}\n\nตอบกลับ:`;
+  // GPT AI ตอบกลับ
+  const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
-    const openai = new OpenAIApi(new Configuration({ apiKey: process.env.GPT_API_KEY }));
-    const gpt = await openai.createChatCompletion({
+    const openai = new OpenAIApi(
+      new Configuration({ apiKey: process.env.GPT_API_KEY })
+    );
+    const completion = await openai.createChatCompletion({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
     });
+
+    const reply = completion.data.choices[0].message.content;
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: gpt.data.choices[0].message.content,
+      text: reply,
     });
   } catch (err) {
-    console.error('❌ GPT Error:', err.message);
+    console.error('❌ GPT error:', err.message);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
@@ -100,40 +112,42 @@ async function handleEvent(event) {
   }
 }
 
-// ✅ admin.html
+// === หน้า Admin UI ===
 app.get('/admin', (req, res) => {
   res.sendFile(path.resolve('admin.html'));
 });
 
-// ✅ โหลด / บันทึก settings
+// === ดึง Settings ไปแสดงบนหน้า admin
 app.get('/admin/settings', (req, res) => {
   res.json(settings);
 });
 
-app.post('/admin/settings', (req, res) => {
+// === รับค่าที่แก้ไขจากหน้า admin
+app.post('/admin/settings', express.json(), (req, res) => {
+  const { prompt, keywords } = req.body;
+  if (prompt) settings.prompt = prompt;
+  if (keywords) settings.keywords = keywords;
+
   try {
-    const { prompt, keywords } = req.body;
-    settings.prompt = prompt || '';
-    settings.keywords = keywords || [];
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    res.status(200).send('saved');
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    res.status(200).send('บันทึกแล้ว');
   } catch (err) {
-    console.error('❌ บันทึก settings ผิดพลาด:', err.message);
-    res.status(500).send('save failed');
+    console.error('❌ เขียน setting.json ไม่สำเร็จ:', err.message);
+    res.status(500).send('ไม่สามารถบันทึกได้');
   }
 });
 
-// ✅ Upload รูป
+// === อัปโหลดรูปภาพ
 app.post('/upload', upload.array('images'), (req, res) => {
-  const urls = req.files.map(file =>
-    `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
-  );
+  const urls = req.files.map(file => {
+    return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
+  });
   res.json({ urls });
 });
 
-// ✅ Start
+// === เริ่มเซิร์ฟเวอร์
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
 
 
