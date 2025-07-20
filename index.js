@@ -4,6 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const crypto = require('crypto');
 const { Client, middleware } = require('@line/bot-sdk');
+const { Configuration, OpenAIApi } = require('openai');
 require('dotenv').config();
 
 const app = express();
@@ -16,17 +17,19 @@ const lineConfig = {
 };
 const lineClient = new Client(lineConfig);
 
+// === OpenAI Config ===
+const openai = new OpenAIApi(new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+}));
+
 // === Middlewares ===
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const upload = multer({ dest: 'uploads/' });
 
-// === Custom Raw Body Parser for /webhook ===
 const rawBodySaver = (req, res, buf) => {
   req.rawBody = buf;
 };
 app.use('/webhook', express.raw({ type: '*/*', verify: rawBodySaver }));
-
-// === JSON Body Parser for other routes ===
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -81,6 +84,7 @@ async function handleEvent(event) {
 
   const userMsg = event.message.text.toLowerCase();
 
+  // === ตอบด้วย Flex ถ้าตรง keyword
   for (const item of settings.keywords) {
     const match = item.keywords.find((kw) => userMsg.includes(kw.toLowerCase()));
     if (match && settings.flex_templates[item.type]) {
@@ -93,16 +97,34 @@ async function handleEvent(event) {
             .replace(/{{text}}/g, item.text || '')
         ),
       }));
-
       return lineClient.replyMessage(event.replyToken, messages);
     }
   }
 
-  // Default response if no keyword matched
-  return lineClient.replyMessage(event.replyToken, {
-    type: 'text',
-    text: settings.prompt || 'ขอบคุณที่ติดต่อเรา',
-  });
+  // === ถ้าไม่เจอ keyword → ใช้ GPT สร้างข้อความตอบกลับ
+  try {
+    const gptRes = await openai.createChatCompletion({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: settings.prompt || 'คุณคือพนักงานบริการลูกค้า PG DOG' },
+        { role: 'user', content: event.message.text },
+      ],
+    });
+
+    const gptReply = gptRes.data.choices[0].message.content;
+
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: gptReply,
+    });
+
+  } catch (err) {
+    console.error('❌ GPT API Error:', err.message);
+    return lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'ขออภัย ระบบตอบกลับไม่สามารถทำงานได้ในขณะนี้ กรุณาติดต่อแอดมินค่ะ',
+    });
+  }
 }
 
 // === Admin Panel ===
@@ -142,3 +164,4 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
