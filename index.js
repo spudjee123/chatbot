@@ -22,21 +22,20 @@ const lineClient = new Client(lineConfig);
 // === OpenAI Config ===
 const openai = new OpenAI({ apiKey: process.env.GPT_API_KEY });
 
-// === Upload Config ===
+// === Multer Config ===
 const upload = multer({ dest: 'uploads/' });
-
-// === Middleware ===
-app.use(bodyParser.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// === Load Settings ===
+// === Body Parser ===
+app.use(bodyParser.json({
+  verify: (req, res, buf) => { req.rawBody = buf; }
+}));
+app.use(express.urlencoded({ extended: true }));
+
+// === Settings ===
 const settingsPath = path.resolve('setting.json');
 let settings = { prompt: 'สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ', keywords: [] };
+
 function loadSettings() {
   try {
     const content = fs.readFileSync(settingsPath, 'utf-8');
@@ -48,42 +47,43 @@ function loadSettings() {
 }
 loadSettings();
 
-// === Validate Signature ===
-function validateLineSignature(body, secret, signature) {
+// === LINE Signature Validation ===
+function validateSignature(body, secret, signature) {
   const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64');
   return hash === signature;
 }
 
 // === Webhook ===
-app.post('/webhook', bodyParser.raw({ type: '*/*' }), (req, res, next) => {
+app.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
   const signature = req.headers['x-line-signature'];
-  if (!signature || !validateLineSignature(req.body, lineConfig.channelSecret, signature)) {
-    console.error('❌ Invalid signature');
+  if (!validateSignature(req.body, lineConfig.channelSecret, signature)) {
+    console.error('❌ Invalid LINE signature');
     return res.status(401).send('Invalid signature');
   }
+
+  let body;
   try {
-    req.body = JSON.parse(req.body.toString());
+    body = JSON.parse(req.body.toString());
   } catch (err) {
     console.error('❌ JSON parse error:', err.message);
     return res.status(400).send('Invalid JSON');
   }
-  next();
-}, async (req, res) => {
+
   try {
-    const results = await Promise.all(req.body.events.map(handleEvent));
+    const results = await Promise.all(body.events.map(handleEvent));
     res.json(results);
   } catch (err) {
-    console.error('❌ Webhook error:', err);
+    console.error('❌ Webhook error:', err.message);
     res.status(500).send('Server error');
   }
 });
 
-// === Handle LINE Messages ===
+// === LINE Message Handling ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userMessage = event.message.text.toLowerCase();
 
-  // ตรวจสอบ keyword
+  // === Match Keyword ===
   for (const keywordObj of settings.keywords || []) {
     if (keywordObj.keywords.some(kw => userMessage.includes(kw.toLowerCase()))) {
       const imageMessages = keywordObj.images.map(url => ({
@@ -91,11 +91,21 @@ async function handleEvent(event) {
         originalContentUrl: url,
         previewImageUrl: url,
       }));
-      return lineClient.replyMessage(event.replyToken, imageMessages);
+
+      // === Fallback ถ้าส่งรูปไม่สำเร็จ
+      try {
+        return await lineClient.replyMessage(event.replyToken, imageMessages);
+      } catch (err) {
+        console.error('❌ LINE image reply failed:', err.response?.data || err.message);
+        return lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: 'ขออภัย ไม่สามารถแสดงภาพได้ในขณะนี้',
+        });
+      }
     }
   }
 
-  // Fallback ไปใช้ GPT
+  // === GPT Prompt
   const prompt = `${settings.prompt}\n\nลูกค้า: ${userMessage}\n\nตอบกลับ:`;
   try {
     const completion = await openai.chat.completions.create({
@@ -103,16 +113,13 @@ async function handleEvent(event) {
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const reply = completion.choices?.[0]?.message?.content || 'ขออภัย ไม่สามารถตอบได้';
-    const trimmedReply = reply.length > 4999 ? reply.slice(0, 4999) : reply;
-
-    return await lineClient.replyMessage(event.replyToken, {
+    const reply = completion.choices[0].message.content;
+    return lineClient.replyMessage(event.replyToken, {
       type: 'text',
-      text: trimmedReply,
+      text: reply,
     });
-
   } catch (err) {
-    console.error('❌ GPT or LINE Reply error:', err.response?.data || err.message);
+    console.error('❌ GPT error:', err.message);
     return lineClient.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ขออภัย ระบบไม่สามารถตอบกลับได้ในขณะนี้',
@@ -136,7 +143,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
 
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    loadSettings(); // รีโหลดใหม่ทันที
+    loadSettings(); // รีโหลดใหม่
     res.status(200).send('บันทึกแล้ว');
   } catch (err) {
     console.error('❌ Save settings failed:', err.message);
@@ -144,7 +151,7 @@ app.post('/admin/settings', express.json(), (req, res) => {
   }
 });
 
-// === Upload Images ===
+// === Upload Image ===
 app.post('/upload', upload.array('images'), (req, res) => {
   const urls = req.files.map(file => {
     return `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
@@ -156,6 +163,7 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
 
 
 // const express = require('express');
