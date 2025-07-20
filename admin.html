@@ -107,20 +107,23 @@
         group.className = 'group';
         group.innerHTML = `
           <label>คำค้น (คั่นด้วย ,):</label>
-          <input type="text" value="${item.keywords?.join(',') || ''}" onchange="updateKeywords(${idx}, this.value)">
+          <input type="text" value="${item.keywords.join(',')}" onchange="updateKeywords(${idx}, this.value)">
+          
+          <label>ข้อความตอบกลับ (ใช้เมื่อไม่มีภาพ):</label>
+          <input type="text" value="${item.text || ''}" onchange="updateText(${idx}, this.value)">
 
-          <label>ประเภทข้อความ (text-image / flex1 / flex2):</label>
+          <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
+          <input type="text" value="${item.images.join(',')}" onchange="updateImages(${idx}, this.value)">
+
+          <label>ประเภทข้อความ:</label>
           <select onchange="updateType(${idx}, this.value)">
-            <option value="text-image" ${item.type === 'text-image' ? 'selected' : ''}>Text + Image</option>
+            <option value="image" ${item.type === 'image' ? 'selected' : ''}>Image</option>
             <option value="flex1" ${item.type === 'flex1' ? 'selected' : ''}>Flex 1</option>
             <option value="flex2" ${item.type === 'flex2' ? 'selected' : ''}>Flex 2</option>
           </select>
 
-          <label>ลิงก์รูปภาพ (คั่นด้วย ,):</label>
-          <input type="text" value="${item.images?.join(',') || ''}" onchange="updateImages(${idx}, this.value)">
-
           <label>รูปภาพตัวอย่าง:</label>
-          <div>${(item.images || []).map(img => `<img src="${img}" />`).join('')}</div>
+          <div>${item.images.map(img => `<img src="${img}" />`).join('')}</div>
 
           <label>อัปโหลดรูปเพิ่มเติม:</label>
           <input type="file" multiple onchange="uploadImages(event, ${idx})" />
@@ -140,12 +143,15 @@
     }
 
     function updateType(idx, val) {
-      if (!['text-image', 'flex1', 'flex2'].includes(val)) val = 'text-image';
       data.keywords[idx].type = val;
     }
 
+    function updateText(idx, val) {
+      data.keywords[idx].text = val;
+    }
+
     function addGroup() {
-      data.keywords.push({ keywords: [], images: [], type: 'text-image' });
+      data.keywords.push({ keywords: [], images: [], type: 'image', text: '' });
       render();
     }
 
@@ -167,27 +173,20 @@
         body: formData
       });
       const urls = await res.json();
-      data.keywords[idx].images = (data.keywords[idx].images || []).concat(urls.urls);
+      data.keywords[idx].images = data.keywords[idx].images.concat(urls.urls);
       render();
     }
 
     async function saveAll() {
       data.prompt = document.getElementById('prompt').value;
-      for (let i = 0; i < data.keywords.length; i++) {
-        if (!data.keywords[i].type) data.keywords[i].type = 'text-image';
-        if (!data.keywords[i].keywords) data.keywords[i].keywords = [];
-        if (!data.keywords[i].images) data.keywords[i].images = [];
-      }
-
       const res = await fetch('/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-
       if (res.ok) {
         alert('✅ บันทึกสำเร็จแล้ว');
-        loadData();
+        loadData(); // โหลดใหม่เพื่ออัปเดต
       } else {
         alert('❌ บันทึกล้มเหลว');
       }
@@ -197,4 +196,3 @@
   </script>
 </body>
 </html>
-
