@@ -4,6 +4,164 @@
   <meta charset="UTF-8">
   <title>ตั้งค่า LINE Bot</title>
   <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
+    h1, h2 { text-align: center; color: #10b981; }
+    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; }
+    .keyword-block { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+    .response-pair { display: flex; gap: 1rem; align-items: center; padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
+    .response-pair .inputs { flex-grow: 1; }
+    button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
+    button:hover { background: #059669; }
+    button.add-response { background-color: #3b82f6; }
+    button.add-response:hover { background-color: #2563eb; }
+    button.remove { background: #ef4444; font-size: 0.8rem; padding: 0.4rem 0.8rem; }
+    button.remove:hover { background: #dc2626; }
+    .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
+    label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+  </style>
+</head>
+<body>
+  <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
+
+  <div class="keyword-block">
+    <h2>Prompt สำหรับ GPT</h2>
+    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..."></textarea>
+  </div>
+
+  <div id="keywords-container"></div>
+  <button onclick="addKeyword()">➕ เพิ่ม Keyword Block ใหม่</button>
+
+  <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
+  <div style="text-align: center;">
+    <button onclick="saveSettings()" style="width: 100%; padding: 1rem; font-size: 1.2rem;">💾 บันทึกการตั้งค่าทั้งหมด</button>
+    <p id="status" class="small"></p>
+  </div>
+
+  <script>
+    let settings = {};
+    const keywordsContainer = document.getElementById('keywords-container');
+
+    // --- Functions to create UI elements ---
+    function createResponsePair(data = {}) {
+      const id = `resp-${Date.now()}-${Math.random()}`;
+      const div = document.createElement('div');
+      div.className = 'response-pair';
+      div.id = id;
+      div.innerHTML = `
+        <div class="inputs">
+          <label>ข้อความตอบกลับ</label>
+          <input type="text" class="response-text" value="${data.text || ''}" placeholder="โปรที่ 1: ฝาก 100 รับ 200">
+          <label>ลิงก์รูปภาพ</label>
+          <input type="text" class="response-image" value="${data.image || ''}" placeholder="https://example.com/promo1.jpg">
+        </div>
+        <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดนี้</button>
+      `;
+      return div;
+    }
+
+    function addKeywordBlock(data = {}) {
+      const id = `kw-block-${Date.now()}-${Math.random()}`;
+      const div = document.createElement('div');
+      div.className = 'keyword-block';
+      div.id = id;
+      
+      const responsesHtml = (data.responses || [{ text: '', image: '' }])
+        .map(resp => createResponsePair(resp).outerHTML).join('');
+
+      div.innerHTML = `
+        <label>คำค้นหา (คั่นด้วย ,)</label>
+        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
+        
+        <label>ประเภท Flex Template</label>
+        <select class="type">
+          ${Object.keys(settings.flex_templates || {}).map(type =>
+            `<option value="${type}" ${type === data.type ? 'selected' : ''}>${type}</option>`
+          ).join('')}
+        </select>
+        
+        <hr style="margin: 1.5rem 0;">
+        <label style="font-size: 1.2rem;">ชุดคำตอบ (ข้อความ + รูปภาพ)</label>
+        <div class="responses-container">${responsesHtml}</div>
+        <button class="add-response" onclick="addResponseToBlock('${id}')">➕ เพิ่มชุดคำตอบ</button>
+        <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
+      `;
+      keywordsContainer.appendChild(div);
+    }
+
+    function addResponseToBlock(blockId) {
+      const container = document.querySelector(`#${blockId} .responses-container`);
+      container.appendChild(createResponsePair());
+    }
+    
+    function addKeyword() {
+      addKeywordBlock();
+    }
+
+    // --- Functions to load and save data ---
+    async function loadSettings() {
+      try {
+        const res = await fetch('/admin/settings');
+        settings = await res.json();
+
+        document.getElementById('prompt').value = settings.prompt || '';
+        keywordsContainer.innerHTML = '';
+        (settings.keywords || []).forEach(addKeywordBlock);
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+        document.getElementById('status').innerText = '❌ โหลดการตั้งค่าไม่สำเร็จ';
+      }
+    }
+
+    async function saveSettings() {
+      const statusEl = document.getElementById('status');
+      statusEl.innerText = 'กำลังบันทึก...';
+      
+      const prompt = document.getElementById('prompt').value;
+      const keywordBlocks = keywordsContainer.querySelectorAll('.keyword-block');
+
+      const keywords = Array.from(keywordBlocks).map(div => {
+        const responsePairs = div.querySelectorAll('.response-pair');
+        const responses = Array.from(responsePairs).map(pair => ({
+          text: pair.querySelector('.response-text').value.trim(),
+          image: pair.querySelector('.response-image').value.trim(),
+        })).filter(r => r.text || r.image); // เอาเฉพาะอันที่มีข้อมูล
+
+        return {
+          keywords: div.querySelector('.keywords').value.split(',').map(s => s.trim()).filter(Boolean),
+          type: div.querySelector('.type').value,
+          responses: responses
+        };
+      });
+
+      const body = {
+        prompt,
+        keywords,
+        flex_templates: settings.flex_templates
+      };
+
+      const res = await fetch('/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      statusEl.innerText = res.ok ? '✅ บันทึกเรียบร้อยแล้ว!' : '❌ บันทึกล้มเหลว';
+      setTimeout(() => statusEl.innerText = '', 3000);
+    }
+
+    // Initial load
+    loadSettings();
+  </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ตั้งค่า LINE Bot</title>
+  <style>
     body {
       font-family: sans-serif;
       max-width: 900px;
@@ -128,5 +286,5 @@
     loadSettings();
   </script>
 </body>
-</html>
+</html> -->
 
