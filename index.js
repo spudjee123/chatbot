@@ -42,7 +42,6 @@ function loadSettings() {
     settings = JSON.parse(data);
     console.log('✅ Settings loaded successfully');
   } catch (err) {
-    // Don't log error if the file simply doesn't exist on first start
     if (err.code !== 'ENOENT') {
       console.error('❌ Error loading settings.json:', err.message);
     } else {
@@ -81,7 +80,7 @@ app.post('/webhook', async (req, res) => {
     });
 });
 
-// === Handle LINE Message ===
+// === Handle LINE Message (Updated for Generic Flex Templates) ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
@@ -90,15 +89,29 @@ async function handleEvent(event) {
   for (const item of settings.keywords) {
     const match = item.keywords.find((kw) => userMsg.includes(kw.toLowerCase()));
     if (match && item.responses && item.responses.length > 0 && settings.flex_templates[item.type]) {
-      const messages = item.responses.map(response => ({
-        type: 'flex',
-        altText: response.text || 'ข้อความตอบกลับใหม่',
-        contents: JSON.parse(
-          JSON.stringify(settings.flex_templates[item.type])
-            .replace(/{{image}}/g, response.image || '')
-            .replace(/{{text}}/g, response.text || '')
-        ),
-      }));
+      const template = settings.flex_templates[item.type];
+      
+      const messages = item.responses.map(response => {
+        let templateString = JSON.stringify(template);
+        
+        // Generic placeholder replacement logic
+        if (response.data) {
+          for (const key in response.data) {
+            const placeholder = new RegExp(`{{${key}}}`, 'g');
+            templateString = templateString.replace(placeholder, response.data[key]);
+          }
+        }
+
+        // Clean up any un-replaced placeholders to avoid errors
+        templateString = templateString.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, '');
+
+        return {
+          type: 'flex',
+          altText: (response.data && (response.data.title || response.data.text)) || 'ข้อความตอบกลับจากบอท',
+          contents: JSON.parse(templateString)
+        };
+      });
+
       return lineClient.replyMessage(event.replyToken, messages);
     }
   }
@@ -132,9 +145,11 @@ app.get('/admin', (req, res) => {
       console.error("Could not read admin.html", err);
       return res.status(500).send("Could not load admin page.");
     }
+    // FIX for Mixed Content on platforms like Railway
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const backendUrl = `${protocol}://${req.get('host')}`;
     
+    // Inject a global JS variable with the correct base URL
     const modifiedHtml = html.replace(
       '</head>',
       `<script>window.API_BASE_URL = '${backendUrl}';</script></head>`
@@ -154,7 +169,7 @@ app.post('/admin/settings', (req, res) => {
   settings.flex_templates = flex_templates || settings.flex_templates;
 
   try {
-    // --- Added more detailed logging for debugging persistence issues ---
+    // Logging for debugging persistence issues
     const fullPath = path.resolve(settingsPath);
     console.log(`Attempting to write to persistent storage at: ${fullPath}`);
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');

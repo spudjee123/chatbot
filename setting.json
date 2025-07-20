@@ -4,45 +4,68 @@
     {
       "keywords": [
         "โปรโมชั่น",
-        "โปร",
-        "promotion"
+        "โปร"
       ],
-      "type": "flex1",
+      "type": "news",
       "responses": [
         {
-          "text": "🔥 โปรสุดร้อนแรง! ฝาก 100 รับฟรี 200 ทันที! เงื่อนไขทำเทิร์น 2 เท่า",
-          "image": "https://img2.pic.in.th/pic/b990d249ecad89c0f47686e5a01d86a2.png"
+          "data": {
+            "thumbnail": "https://img2.pic.in.th/pic/b990d249ecad89c0f47686e5a01d86a2.png",
+            "title": "โปรสุดร้อนแรง! ฝาก 100 รับฟรี 200",
+            "text": "โปรโมชั่นสุดพิเศษสำหรับสมาชิกใหม่เท่านั้น! ฝากเงินครั้งแรก 100 บาท รับโบนัสเพิ่มทันทีอีก 200 บาท",
+            "action_label": "ดูรายละเอียด",
+            "action_url": "https://example.com/promotion1"
+          }
         },
         {
-          "text": "💸 โปรคืนยอดเสีย 5% ทุกสัปดาห์ ยิ่งเล่นเยอะ ยิ่งคืนเยอะ!",
-          "image": "https://img2.pic.in.th/pic/5f359994b87cff8f3a10a17cbf.png"
+          "data": {
+            "thumbnail": "https://img2.pic.in.th/pic/5f359994b87cff8f3a10a17cbf.png",
+            "title": "โปรคืนยอดเสีย 5% ทุกสัปดาห์",
+            "text": "ไม่ต้องเสียใจถ้าเล่นเสีย เราคืนยอดเสียให้ 5% ทุกสัปดาห์ ยิ่งเล่นเยอะ ยิ่งได้คืนเยอะ!",
+            "action_label": "อ่านเพิ่มเติม",
+            "action_url": "https://example.com/cashback"
+          }
         }
       ]
     },
     {
       "keywords": [
-        "ติดต่อ",
-        "สอบถาม",
-        "แอดมิน"
+        "ร้านอาหาร",
+        "หิว"
       ],
-      "type": "flex2",
+      "type": "restaurant",
       "responses": [
         {
-          "text": "หากต้องการสอบถามเพิ่มเติม กรุณาติดต่อแอดมินผ่านทาง LINE Official ได้เลยค่ะ",
-          "image": "https://placehold.co/800x400/22c55e/ffffff?text=ติดต่อแอดมิน"
+          "data": {
+            "hero_image": "https://scdn.line-apps.com/n/channel_devcenter/img/fx/01_1_restaurant.png",
+            "hero_url": "https://example.com",
+            "title": "PG DOG Kitchen",
+            "rating": "4.8",
+            "review_count": "1,250",
+            "address": "123 ถนนสุขุมวิท กรุงเทพฯ",
+            "hours": "10:00 - 22:00",
+            "button1_text": "โทรสั่งอาหาร",
+            "button1_url": "tel:0812345678",
+            "button2_text": "ดูเมนูบนเว็บไซต์",
+            "button2_url": "https://example.com/menu"
+          }
         }
       ]
     }
   ],
   "flex_templates": {
-    "flex1": {
+    "news": {
       "type": "bubble",
       "hero": {
         "type": "image",
-        "url": "{{image}}",
+        "url": "{{thumbnail}}",
         "size": "full",
         "aspectRatio": "20:13",
-        "aspectMode": "cover"
+        "aspectMode": "cover",
+        "action": {
+          "type": "uri",
+          "uri": "{{action_url}}"
+        }
       },
       "body": {
         "type": "box",
@@ -50,36 +73,178 @@
         "contents": [
           {
             "type": "text",
-            "text": "{{text}}",
-            "wrap": true,
+            "text": "{{title}}",
             "weight": "bold",
-            "size": "md"
+            "size": "xl",
+            "wrap": true
+          },
+          {
+            "type": "box",
+            "layout": "vertical",
+            "margin": "lg",
+            "spacing": "sm",
+            "contents": [
+              {
+                "type": "text",
+                "text": "{{text}}",
+                "wrap": true,
+                "size": "sm",
+                "color": "#666666"
+              }
+            ]
           }
         ]
+      },
+      "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "contents": [
+          {
+            "type": "button",
+            "style": "link",
+            "height": "sm",
+            "action": {
+              "type": "uri",
+              "label": "{{action_label}}",
+              "uri": "{{action_url}}"
+            }
+          }
+        ],
+        "flex": 0
       }
     },
-    "flex2": {
+    "restaurant": {
       "type": "bubble",
+      "hero": {
+        "type": "image",
+        "url": "{{hero_image}}",
+        "size": "full",
+        "aspectRatio": "20:13",
+        "aspectMode": "cover",
+        "action": {
+          "type": "uri",
+          "uri": "{{hero_url}}"
+        }
+      },
       "body": {
         "type": "box",
         "layout": "vertical",
-        "spacing": "md",
         "contents": [
           {
             "type": "text",
-            "text": "{{text}}",
-            "wrap": true,
+            "text": "{{title}}",
             "weight": "bold",
-            "size": "lg"
+            "size": "xl"
           },
           {
-            "type": "image",
-            "url": "{{image}}",
-            "size": "full",
-            "aspectRatio": "2:1",
-            "aspectMode": "cover"
+            "type": "box",
+            "layout": "baseline",
+            "margin": "md",
+            "contents": [
+              {
+                "type": "icon",
+                "size": "sm",
+                "url": "https://scdn.line-apps.com/n/channel_devcenter/img/fx/review_gold_star_28.png"
+              },
+              {
+                "type": "text",
+                "text": "{{rating}}",
+                "size": "sm",
+                "color": "#999999",
+                "margin": "md",
+                "flex": 0
+              },
+              {
+                "type": "text",
+                "text": "({{review_count}})",
+                "size": "sm",
+                "color": "#999999",
+                "margin": "md"
+              }
+            ]
+          },
+          {
+            "type": "box",
+            "layout": "vertical",
+            "margin": "lg",
+            "spacing": "sm",
+            "contents": [
+              {
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": "ที่อยู่",
+                    "color": "#aaaaaa",
+                    "size": "sm",
+                    "flex": 1
+                  },
+                  {
+                    "type": "text",
+                    "text": "{{address}}",
+                    "wrap": true,
+                    "color": "#666666",
+                    "size": "sm",
+                    "flex": 5
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": "เวลา",
+                    "color": "#aaaaaa",
+                    "size": "sm",
+                    "flex": 1
+                  },
+                  {
+                    "type": "text",
+                    "text": "{{hours}}",
+                    "wrap": true,
+                    "color": "#666666",
+                    "size": "sm",
+                    "flex": 5
+                  }
+                ]
+              }
+            ]
           }
         ]
+      },
+      "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "contents": [
+          {
+            "type": "button",
+            "style": "link",
+            "height": "sm",
+            "action": {
+              "type": "uri",
+              "label": "{{button1_text}}",
+              "uri": "{{button1_url}}"
+            }
+          },
+          {
+            "type": "button",
+            "style": "link",
+            "height": "sm",
+            "action": {
+              "type": "uri",
+              "label": "{{button2_text}}",
+              "uri": "{{button2_url}}"
+            }
+          }
+        ],
+        "flex": 0
       }
     }
   }

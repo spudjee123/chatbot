@@ -6,27 +6,25 @@
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
     h1, h2 { text-align: center; color: #10b981; }
-    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; }
+    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: monospace; }
     .keyword-block { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
-    .response-pair { display: flex; gap: 1rem; align-items: center; padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
-    .response-pair .inputs { flex-grow: 1; }
+    .response-pair { padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
     button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
     button:hover { background: #059669; }
     button.add-response { background-color: #3b82f6; }
     button.add-response:hover { background-color: #2563eb; }
-    button.remove { background: #ef4444; font-size: 0.8rem; padding: 0.4rem 0.8rem; }
+    button.remove { background: #ef4444; }
     button.remove:hover { background: #dc2626; }
     .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
     label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
   </style>
-  <!-- The script containing window.API_BASE_URL will be injected here by the server -->
 </head>
 <body>
   <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
 
   <div class="keyword-block">
     <h2>Prompt สำหรับ GPT</h2>
-    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..."></textarea>
+    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..." style="font-family: sans-serif;"></textarea>
   </div>
 
   <div id="keywords-container"></div>
@@ -48,13 +46,9 @@
       div.className = 'response-pair';
       div.id = id;
       div.innerHTML = `
-        <div class="inputs">
-          <label>ข้อความตอบกลับ</label>
-          <input type="text" class="response-text" value="${data.text || ''}" placeholder="โปรที่ 1: ฝาก 100 รับ 200">
-          <label>ลิงก์รูปภาพ</label>
-          <input type="text" class="response-image" value="${data.image || ''}" placeholder="https://example.com/promo1.jpg">
-        </div>
-        <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดนี้</button>
+        <label>ข้อมูลสำหรับ Template (JSON)</label>
+        <textarea class="response-data" rows="8" placeholder='{\n  "title": "หัวข้อ",\n  "text": "รายละเอียด",\n  "thumbnail": "https://example.com/image.jpg"\n}'>${JSON.stringify(data.data || {}, null, 2)}</textarea>
+        <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดคำตอบนี้</button>
       `;
       return div;
     }
@@ -63,8 +57,6 @@
       const container = document.querySelector(`#${blockId} .responses-container`);
       if (container) {
         container.appendChild(createResponsePair());
-      } else {
-        console.error('Could not find responses container for block ID:', blockId);
       }
     }
 
@@ -74,22 +66,21 @@
       div.className = 'keyword-block';
       div.id = id;
       
-      const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ text: '', image: '' }])
+      const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ data: {} }])
         .map(resp => createResponsePair(resp).outerHTML).join('');
 
       div.innerHTML = `
         <label>คำค้นหา (คั่นด้วย ,)</label>
-        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
+        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion" style="font-family: sans-serif;">
         
         <label>ประเภท Flex Template</label>
-        <select class="type">
+        <select class="type" style="font-family: sans-serif;">
           ${Object.keys(settings.flex_templates || {}).map(type =>
             `<option value="${type}" ${type === data.type ? 'selected' : ''}>${type}</option>`
           ).join('')}
         </select>
         
         <hr style="margin: 1.5rem 0;">
-        <label style="font-size: 1.2rem;">ชุดคำตอบ (ข้อความ + รูปภาพ)</label>
         <div class="responses-container">${responsesHtml}</div>
         <button class="add-response" onclick="addResponseToBlock('${id}')">➕ เพิ่มชุดคำตอบ</button>
         <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
@@ -105,13 +96,8 @@
       try {
         const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
         const res = await fetch(apiUrl);
-
-        if (!res.ok) {
-            throw new Error(`Server returned ${res.status}: ${await res.text()}`);
-        }
-        
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
         settings = await res.json();
-
         document.getElementById('prompt').value = settings.prompt || '';
         keywordsContainer.innerHTML = '';
         if (settings.keywords && settings.keywords.length > 0) {
@@ -126,16 +112,27 @@
     async function saveSettings() {
       const statusEl = document.getElementById('status');
       statusEl.innerText = 'กำลังบันทึก...';
+      let allJsonIsValid = true;
       
       const prompt = document.getElementById('prompt').value;
       const keywordBlocks = keywordsContainer.querySelectorAll('.keyword-block');
 
       const keywords = Array.from(keywordBlocks).map(div => {
         const responsePairs = div.querySelectorAll('.response-pair');
-        const responses = Array.from(responsePairs).map(pair => ({
-          text: pair.querySelector('.response-text').value.trim(),
-          image: pair.querySelector('.response-image').value.trim(),
-        })).filter(r => r.text || r.image);
+        const responses = Array.from(responsePairs).map(pair => {
+          const textarea = pair.querySelector('.response-data');
+          textarea.style.border = '1px solid #d1d5db';
+          let data = {};
+          try {
+            if (textarea.value.trim()) {
+              data = JSON.parse(textarea.value);
+            }
+          } catch (e) {
+            textarea.style.border = '2px solid red';
+            allJsonIsValid = false;
+          }
+          return { data };
+        }).filter(r => r.data && Object.keys(r.data).length > 0);
 
         return {
           keywords: div.querySelector('.keywords').value.split(',').map(s => s.trim()).filter(Boolean),
@@ -144,12 +141,12 @@
         };
       });
 
-      const body = {
-        prompt,
-        keywords,
-        flex_templates: settings.flex_templates
-      };
+      if (!allJsonIsValid) {
+        statusEl.innerText = '❌ พบข้อผิดพลาด! กรุณาตรวจสอบรูปแบบ JSON ในช่องข้อมูลที่ไฮไลท์สีแดง';
+        return;
+      }
 
+      const body = { prompt, keywords, flex_templates: settings.flex_templates };
       const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
       const res = await fetch(apiUrl, {
         method: 'POST',
@@ -158,10 +155,9 @@
       });
 
       statusEl.innerText = res.ok ? '✅ บันทึกเรียบร้อยแล้ว!' : '❌ บันทึกล้มเหลว';
-      setTimeout(() => statusEl.innerText = '', 3000);
+      setTimeout(() => { statusEl.innerText = ''; }, 3000);
     }
 
-    // Initial load
     loadSettings();
   </script>
 </body>
