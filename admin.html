@@ -10,7 +10,7 @@
     textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: sans-serif; }
     .keyword-block { display: flex; gap: 1.5rem; background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
     .form-container { flex: 2; }
-    .response-pair { padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
+    .response-pair { padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 0.75rem; margin-bottom: 1rem; background-color: #fdfdfd; }
     button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
     button:hover { background: #059669; }
     button.add-response { background-color: #3b82f6; }
@@ -22,7 +22,8 @@
 
     /* --- Enhanced Preview Styles --- */
     .preview-section { flex: 1; background-color: #f3f4f6; padding: 1rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
-    .preview-wrapper { background-color: #a7b0ba; padding: 20px; border-radius: 10px; margin-top: 1rem; }
+    .preview-container { display: flex; flex-direction: column; gap: 1.5rem; }
+    .preview-wrapper { background-color: #a7b0ba; padding: 20px; border-radius: 10px; margin-top: 1rem; transition: opacity 0.3s, transform 0.3s; }
     .preview-bubble { background: #ffffff; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); max-width: 280px; margin: auto; overflow: hidden; text-align: left; }
     .preview-thumbnail-target { width: 100%; height: 140px; background-color: #e5e7eb; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.9rem; transition: background-image 0.2s; }
     .preview-body { padding: 16px; }
@@ -63,39 +64,38 @@
 
     function getPlaceholderText(fieldName) {
       const examples = {
-        'thumbnail': 'URL รูปภาพ เช่น https://example.com/image.jpg',
-        'action_url': 'URL ที่จะเปิดเมื่อคลิก เช่น https://example.com/promotion',
-        'title': 'หัวข้อหลักของข้อความ (แสดงเป็นตัวหนา)',
-        'text': 'เนื้อหารายละเอียดสั้นๆ',
-        'action_label': 'ข้อความบนปุ่ม เช่น "ดูเพิ่มเติม" หรือ "คลิกเลย"',
+        'thumbnail': 'URL รูปภาพ เช่น https://example.com/image.jpg', 'action_url': 'URL ที่จะเปิดเมื่อคลิก เช่น https://example.com/promotion', 'title': 'หัวข้อหลักของข้อความ (แสดงเป็นตัวหนา)', 'text': 'เนื้อหารายละเอียดสั้นๆ', 'action_label': 'ข้อความบนปุ่ม เช่น "ดูเพิ่มเติม" หรือ "คลิกเลย"',
       };
       return examples[fieldName] || `กรอกข้อมูลสำหรับ ${fieldName}`;
     }
     
-    function generatePreview(templateType) {
-        // CORRECTED: Class names now match data keys (e.g., preview-thumbnail-target).
-        return `
-            <div class="preview-wrapper">
-                <div class="preview-bubble">
-                    <div class="preview-thumbnail-target"><span>(thumbnail)</span></div>
-                    <div class="preview-body">
-                        <div class="preview-title-target">(title)</div>
-                        <div class="preview-text-target">(text)</div>
-                        <a href="javascript:void(0);" class="preview-action_label-target">(action_label)</a>
-                    </div>
+    function generatePreview(responseId, templateType) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'preview-wrapper';
+        wrapper.id = `preview-${responseId}`;
+        wrapper.innerHTML = `
+            <div class="preview-bubble">
+                <div class="preview-thumbnail-target"><span>(thumbnail)</span></div>
+                <div class="preview-body">
+                    <div class="preview-title-target">(title)</div>
+                    <div class="preview-text-target">(text)</div>
+                    <a href="javascript:void(0);" class="preview-action_label-target">(action_label)</a>
                 </div>
-            </div>
-        `;
+            </div>`;
+        return wrapper;
     }
 
     function updatePreviewField(input) {
-      const block = input.closest('.keyword-block');
-      if (!block) return;
+      const responsePair = input.closest('.response-pair');
+      if (!responsePair) return;
+      
+      const responseId = responsePair.id;
+      const previewWrapper = document.getElementById(`preview-${responseId}`);
+      if (!previewWrapper) return;
 
       const key = input.dataset.key;
       const value = input.value;
-      // CORRECTED: This dynamic selector now works for all fields.
-      const target = block.querySelector(`.preview-${key}-target`); 
+      const target = previewWrapper.querySelector(`.preview-${key}-target`); 
       if (!target) return;
 
       if (key === 'thumbnail') {
@@ -108,7 +108,6 @@
               if (placeholderText) placeholderText.style.display = 'inline';
           }
       } else {
-          // This now correctly handles title, text, AND action_label
           target.innerText = value || `(${key})`;
       }
     }
@@ -116,7 +115,6 @@
     function createResponsePair(data = {}, templateType = 'news') {
       const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const flexTemplate = settings.flex_templates[templateType] || {};
-      
       const div = document.createElement('div');
       div.className = 'response-pair';
       div.id = id;
@@ -125,28 +123,34 @@
       let formHtml = '';
       fields.forEach((field) => {
         const value = (data.data && data.data[field]) || '';
-        formHtml += `
-          <label>${field}</label>
-          <input type="text" class="field-${field}" data-key="${field}" value="${value}" 
-                 placeholder="${getPlaceholderText(field)}" oninput="updatePreviewField(this)">
-        `;
+        formHtml += `<label>${field}</label><input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="${getPlaceholderText(field)}" oninput="updatePreviewField(this)">`;
       });
 
-      div.innerHTML = `
-        ${formHtml}
-        <textarea class="response-data" style="display:none;">${JSON.stringify(data.data || {}, null, 2)}</textarea>
-        <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดคำตอบนี้</button>
-      `;
-      return div;
+      div.innerHTML = `${formHtml}<button class="remove" onclick="removeResponseAndPreview('${id}')">ลบชุดคำตอบนี้</button>`;
+      return { element: div, id: id };
+    }
+    
+    function removeResponseAndPreview(responseId) {
+      const responseEl = document.getElementById(responseId);
+      const previewEl = document.getElementById(`preview-${responseId}`);
+      if (responseEl) responseEl.remove();
+      if (previewEl) previewEl.remove();
     }
 
-    function addResponseToBlock(blockId, type) {
-      const container = document.querySelector(`#${blockId} .responses-container`);
-      if (container) {
-          const newPair = createResponsePair({}, type);
-          container.appendChild(newPair);
-          newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
-      }
+    function addResponseToBlock(blockId) {
+      const block = document.getElementById(blockId);
+      if (!block) return;
+      const responsesContainer = block.querySelector('.responses-container');
+      const previewContainer = block.querySelector('.preview-container');
+      const type = block.querySelector('.type').value;
+
+      const { element: newPair, id: newId } = createResponsePair({}, type);
+      const newPreview = generatePreview(newId, type);
+
+      responsesContainer.appendChild(newPair);
+      previewContainer.appendChild(newPreview);
+      
+      newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
     }
 
     function addKeywordBlock(data = {}) {
@@ -156,47 +160,62 @@
       div.id = id;
       
       const currentType = data.type || (settings.flex_templates && Object.keys(settings.flex_templates)[0]) || 'news';
+      const responses = (data.responses && data.responses.length > 0) ? data.responses : [{ data: {} }];
+      
+      let responsesHtml = '';
+      let previewsHtml = '';
 
-      const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ data: {} }])
-        .map(resp => createResponsePair(resp, currentType).outerHTML).join('');
+      const responseElements = [];
+
+      responses.forEach(resp => {
+        const { element, id: responseId } = createResponsePair(resp, currentType);
+        const previewElement = generatePreview(responseId, currentType);
+        responsesHtml += element.outerHTML;
+        previewsHtml += previewElement.outerHTML;
+        responseElements.push({ element, initialData: resp.data });
+      });
 
       div.innerHTML = `
         <div class="form-container">
             <label>คำค้นหา (คั่นด้วย ,)</label>
             <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
             <label>ประเภท Flex Template</label>
-            <select class="type" onchange="updateResponsesAndPreview('${id}')" style="font-family: sans-serif;">
-              ${Object.keys(settings.flex_templates || {}).map(type =>
-                `<option value="${type}" ${type === currentType ? 'selected' : ''}>${type}</option>`
-              ).join('')}
+            <select class="type" onchange="updateBlockOnTypeChange('${id}')" style="font-family: sans-serif;">
+              ${Object.keys(settings.flex_templates || {}).map(type => `<option value="${type}" ${type === currentType ? 'selected' : ''}>${type}</option>`).join('')}
             </select>
             <hr style="margin: 1.5rem 0;">
             <div class="responses-container">${responsesHtml}</div>
-            <button class="add-response" onclick="addResponseToBlock('${id}', document.querySelector('#${id} .type').value)">➕ เพิ่มชุดคำตอบ</button>
+            <button class="add-response" onclick="addResponseToBlock('${id}')">➕ เพิ่มชุดคำตอบ</button>
             <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
         </div>
         <div class="preview-section">
             <h3>ตัวอย่าง Template</h3>
-            <div class="preview-container">${generatePreview(currentType)}</div>
+            <div class="preview-container">${previewsHtml}</div>
         </div>
       `;
       keywordsContainer.appendChild(div);
 
-      const initialInputs = div.querySelectorAll('.form-container input[data-key]');
-      initialInputs.forEach(input => updatePreviewField(input));
+      div.querySelectorAll('.form-container .response-pair').forEach(pair => {
+          pair.querySelectorAll('input[data-key]').forEach(input => updatePreviewField(input));
+      });
     }
 
-    function updateResponsesAndPreview(blockId) {
-      const block = document.getElementById(blockId);
-      const responsesContainer = block.querySelector('.responses-container');
-      const previewContainer = block.querySelector('.preview-container');
-      const type = block.querySelector('.type').value;
+    function updateBlockOnTypeChange(blockId) {
+        const block = document.getElementById(blockId);
+        const type = block.querySelector('.type').value;
+        const responsesContainer = block.querySelector('.responses-container');
+        const previewContainer = block.querySelector('.preview-container');
+        
+        // Clear existing content
+        responsesContainer.innerHTML = '';
+        previewContainer.innerHTML = '';
 
-      responsesContainer.innerHTML = '';
-      const newPair = createResponsePair({}, type);
-      responsesContainer.appendChild(newPair);
-      previewContainer.innerHTML = generatePreview(type);
-      newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
+        // Add one new empty response and preview for the new type
+        const { element: newPair, id: newId } = createResponsePair({}, type);
+        const newPreview = generatePreview(newId, type);
+        responsesContainer.appendChild(newPair);
+        previewContainer.appendChild(newPreview);
+        newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
     }
     
     function addKeyword() {
@@ -235,8 +254,6 @@
           const inputs = pair.querySelectorAll('input[data-key]');
           let data = {};
           inputs.forEach(input => { data[input.dataset.key] = input.value.trim(); });
-          const textarea = pair.querySelector('.response-data');
-          textarea.value = JSON.stringify(data, null, 2);
           return { data };
         });
         return {
@@ -244,12 +261,12 @@
           type,
           responses
         };
-      });
+      }).filter(kw => kw.keywords.length > 0 && kw.responses.length > 0);
 
       const res = await fetch((window.API_BASE_URL || '') + '/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, keywords })
+        body: JSON.stringify({ prompt, keywords, flex_templates: settings.flex_templates })
       });
 
       if (res.ok) {
