@@ -40,10 +40,9 @@ function loadSettings() {
   try {
     const rawData = fs.readFileSync(settingsPath, 'utf8');
 
-    // **FIX**: Clean the raw string data from setting.json before parsing.
-    // This regex removes semicolons that are likely syntax errors (e.g., before a comma, colon, or closing brace)
-    // without affecting semicolons inside actual string values.
-    const cleanedData = rawData.replace(/;(?=\s*[,}:])/g, '');
+    // **FIX**: More aggressive cleaning to remove all semicolons, which are invalid in JSON structure.
+    // This should fix the parsing errors caused by corrupted data in setting.json.
+    const cleanedData = rawData.replace(/;/g, '');
 
     settings = JSON.parse(cleanedData);
     console.log('✅ Settings loaded successfully');
@@ -86,7 +85,7 @@ app.post('/webhook', async (req, res) => {
     });
 });
 
-// === Handle LINE Message (FIXED to prevent 400 Bad Request) ===
+// === Handle LINE Message ===
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
@@ -98,26 +97,21 @@ async function handleEvent(event) {
     if (match && item.responses && item.responses.length > 0 && settings.flex_templates[item.type]) {
       const template = settings.flex_templates[item.type];
 
-      // **FIX**: Filter out responses that don't have essential data to prevent errors.
       const validResponses = item.responses.filter(response => {
-        // A response is valid if it has data and at least a title.
-        return response.data && response.data.title;
+        return response.data && (response.data.title || response.data.action_label);
       });
 
-      // If there are no valid responses after filtering, do nothing.
       if (validResponses.length === 0) {
-        return Promise.resolve(null);
+        continue; // Skip to next keyword if no valid responses
       }
       
-      // If there is more than one VALID response, build a carousel
       if (validResponses.length > 1) {
         const bubbles = validResponses.map(response => {
           let templateString = JSON.stringify(template);
-          
           if (response.data) {
             for (const key in response.data) {
               const placeholder = new RegExp(`{{${key}}}`, 'g');
-              templateString = templateString.replace(placeholder, response.data[key] || ''); // Use empty string for safety
+              templateString = templateString.replace(placeholder, response.data[key] || '');
             }
           }
           return JSON.parse(templateString);
@@ -134,10 +128,8 @@ async function handleEvent(event) {
         return lineClient.replyMessage(event.replyToken, carouselMessage);
 
       } else { 
-        // If there is only one VALID response, send a single bubble message
         const response = validResponses[0];
         let templateString = JSON.stringify(template);
-        
         if (response.data) {
           for (const key in response.data) {
             const placeholder = new RegExp(`{{${key}}}`, 'g');
@@ -235,6 +227,7 @@ app.post('/upload', upload.array('images'), (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
 
 
 // const express = require('express');
