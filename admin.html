@@ -5,9 +5,12 @@
   <title>ตั้งค่า LINE Bot</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
-    h1, h2 { text-align: center; color: #10b981; }
+    h1, h2, h3 { text-align: center; color: #10b981; }
+    h3 { color: #374151; margin-top: 0; }
     textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: sans-serif; }
-    .keyword-block { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+    .keyword-block { display: flex; gap: 1.5rem; background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+    .form-container { flex: 2; }
+    .preview-section { flex: 1; background-color: #f3f4f6; padding: 1rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; }
     .response-pair { padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
     button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
     button:hover { background: #059669; }
@@ -17,14 +20,22 @@
     button.remove:hover { background: #dc2626; }
     .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
     label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+
+    /* --- Preview Styles --- */
+    .preview-bubble { background: #ffffff; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 280px; margin: auto; }
+    .preview-image { width: 100%; height: 140px; background: #e5e7eb center/cover; border-top-left-radius: 10px; border-top-right-radius: 10px; display:flex; align-items:center; justify-content:center; color:#9ca3af; font-size:0.9rem; }
+    .preview-body { padding: 16px; }
+    .preview-title { font-weight: bold; font-size: 1.1rem; color: #1f2937; margin-bottom: 8px; }
+    .preview-text { font-size: 0.9rem; color: #6b7280; margin-bottom: 16px; white-space: pre-wrap; }
+    .preview-button { display: block; width: 100%; text-align: center; padding: 12px; background-color: #10b981; color: white; border-radius: 5px; text-decoration: none; font-weight: bold; }
   </style>
 </head>
 <body>
   <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
 
-  <div class="keyword-block">
+  <div class="keyword-block" style="flex-direction: column; gap: 0.5rem;">
     <h2>Prompt สำหรับ GPT</h2>
-    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..."></textarea>
+    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่จะใช้กับ GPT เพื่อให้ AI ตอบตามรูปแบบที่เราต้องการ..."></textarea>
   </div>
 
   <div id="keywords-container"></div>
@@ -51,6 +62,37 @@
       return Array.from(placeholders);
     }
 
+    function getPlaceholderText(fieldName) {
+      const examples = {
+        'thumbnail': 'URL รูปภาพ เช่น https://example.com/image.jpg',
+        'action_url': 'URL ที่จะเปิดเมื่อคลิก เช่น https://example.com/promotion',
+        'title': 'หัวข้อหลักของข้อความ (แสดงเป็นตัวหนา)',
+        'text': 'เนื้อหารายละเอียดสั้นๆ',
+        'action_label': 'ข้อความบนปุ่ม เช่น "ดูเพิ่มเติม" หรือ "คลิกเลย"',
+      };
+      return examples[fieldName] || `กรอกข้อมูลสำหรับ ${fieldName}`;
+    }
+    
+    function generatePreview(templateType) {
+        // ในอนาคตสามารถดึงโครงสร้าง Preview มาจาก settings ได้
+        // แต่ตอนนี้ใช้การ hardcode ตามประเภทที่พบบ่อย
+        switch (templateType) {
+            case 'news':
+            default:
+                return `
+                    <div class="preview-bubble">
+                        <div class="preview-image"><span>(thumbnail)</span></div>
+                        <div class="preview-body">
+                            <div class="preview-title">(title)</div>
+                            <div class="preview-text">(text)</div>
+                            <a href="#" class="preview-button">(action_label)</a>
+                        </div>
+                    </div>
+                `;
+        }
+    }
+
+
     function createResponsePair(data = {}, templateType = 'news') {
       const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const flexTemplate = settings.flex_templates[templateType] || {};
@@ -65,7 +107,7 @@
         const value = (data.data && data.data[field]) || '';
         formHtml += `
           <label>${field}</label>
-          <input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="กรอก ${field}">
+          <input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="${getPlaceholderText(field)}">
         `;
       });
 
@@ -90,35 +132,54 @@
       const div = document.createElement('div');
       div.className = 'keyword-block';
       div.id = id;
+      
+      const currentType = data.type || (settings.flex_templates && Object.keys(settings.flex_templates)[0]) || 'news';
 
       const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ data: {} }])
-        .map(resp => createResponsePair(resp, data.type || 'news').outerHTML).join('');
+        .map(resp => createResponsePair(resp, currentType).outerHTML).join('');
 
       div.innerHTML = `
-        <label>คำค้นหา (คั่นด้วย ,)</label>
-        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
+        <div class="form-container">
+            <label>คำค้นหา (คั่นด้วย ,)</label>
+            <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
 
-        <label>ประเภท Flex Template</label>
-        <select class="type" onchange="updateResponses('${id}')" style="font-family: sans-serif;">
-          ${Object.keys(settings.flex_templates || {}).map(type =>
-            `<option value="${type}" ${type === data.type ? 'selected' : ''}>${type}</option>`
-          ).join('')}
-        </select>
+            <label>ประเภท Flex Template</label>
+            <select class="type" onchange="updateResponsesAndPreview('${id}')" style="font-family: sans-serif;">
+              ${Object.keys(settings.flex_templates || {}).map(type =>
+                `<option value="${type}" ${type === currentType ? 'selected' : ''}>${type}</option>`
+              ).join('')}
+            </select>
 
-        <hr style="margin: 1.5rem 0;">
-        <div class="responses-container">${responsesHtml}</div>
-        <button class="add-response" onclick="addResponseToBlock('${id}', document.querySelector('#${id} .type').value)">➕ เพิ่มชุดคำตอบ</button>
-        <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
+            <hr style="margin: 1.5rem 0;">
+            <div class="responses-container">${responsesHtml}</div>
+            <button class="add-response" onclick="addResponseToBlock('${id}', document.querySelector('#${id} .type').value)">➕ เพิ่มชุดคำตอบ</button>
+            <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
+        </div>
+        <div class="preview-section">
+            <h3>ตัวอย่าง Template</h3>
+            <div class="preview-container">${generatePreview(currentType)}</div>
+        </div>
       `;
       keywordsContainer.appendChild(div);
     }
 
-    function updateResponses(blockId) {
+    function updateResponsesAndPreview(blockId) {
       const block = document.getElementById(blockId);
-      const container = block.querySelector('.responses-container');
+      const responsesContainer = block.querySelector('.responses-container');
+      const previewContainer = block.querySelector('.preview-container');
       const type = block.querySelector('.type').value;
-      container.innerHTML = '';
-      container.appendChild(createResponsePair({}, type));
+
+      // Update responses form
+      responsesContainer.innerHTML = '';
+      responsesContainer.appendChild(createResponsePair({}, type));
+
+      // Update preview
+      previewContainer.innerHTML = generatePreview(type);
+    }
+    
+    // Legacy function name for safety, can be removed if not used elsewhere
+    function updateResponses(blockId) {
+       updateResponsesAndPreview(blockId);
     }
 
     function addKeyword() {
@@ -135,6 +196,9 @@
         keywordsContainer.innerHTML = '';
         if (settings.keywords && settings.keywords.length > 0) {
           settings.keywords.forEach(addKeywordBlock);
+        } else {
+           // Add one empty block if no keywords are set
+           addKeyword();
         }
       } catch (error) {
         console.error("Failed to load settings:", error);
@@ -145,7 +209,6 @@
     async function saveSettings() {
       const statusEl = document.getElementById('status');
       statusEl.innerText = 'กำลังบันทึก...';
-      let allJsonIsValid = true;
 
       const prompt = document.getElementById('prompt').value;
       const keywordBlocks = keywordsContainer.querySelectorAll('.keyword-block');
