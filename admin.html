@@ -6,7 +6,7 @@
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
     h1, h2 { text-align: center; color: #10b981; }
-    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: monospace; }
+    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: sans-serif; }
     .keyword-block { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
     .response-pair { padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
     button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
@@ -24,7 +24,7 @@
 
   <div class="keyword-block">
     <h2>Prompt สำหรับ GPT</h2>
-    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..." style="font-family: sans-serif;"></textarea>
+    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่นี่..."></textarea>
   </div>
 
   <div id="keywords-container"></div>
@@ -40,23 +40,48 @@
     let settings = {};
     const keywordsContainer = document.getElementById('keywords-container');
 
-    function createResponsePair(data = {}) {
+    function extractPlaceholdersFromTemplate(template) {
+      const json = JSON.stringify(template);
+      const regex = /\{\{(.*?)\}\}/g;
+      const placeholders = new Set();
+      let match;
+      while ((match = regex.exec(json)) !== null) {
+        placeholders.add(match[1]);
+      }
+      return Array.from(placeholders);
+    }
+
+    function createResponsePair(data = {}, templateType = 'news') {
       const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+      const flexTemplate = settings.flex_templates[templateType] || {};
+      
       const div = document.createElement('div');
       div.className = 'response-pair';
       div.id = id;
+
+      const fields = extractPlaceholdersFromTemplate(flexTemplate);
+      let formHtml = '';
+      fields.forEach((field) => {
+        const value = (data.data && data.data[field]) || '';
+        formHtml += `
+          <label>${field}</label>
+          <input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="กรอก ${field}">
+        `;
+      });
+
       div.innerHTML = `
-        <label>ข้อมูลสำหรับ Template (JSON)</label>
-        <textarea class="response-data" rows="8" placeholder='{\n  "title": "หัวข้อ",\n  "text": "รายละเอียด",\n  "thumbnail": "https://example.com/image.jpg"\n}'>${JSON.stringify(data.data || {}, null, 2)}</textarea>
+        ${formHtml}
+        <textarea class="response-data" style="display:none;">${JSON.stringify(data.data || {}, null, 2)}</textarea>
         <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดคำตอบนี้</button>
       `;
+
       return div;
     }
 
-    function addResponseToBlock(blockId) {
+    function addResponseToBlock(blockId, type) {
       const container = document.querySelector(`#${blockId} .responses-container`);
       if (container) {
-        container.appendChild(createResponsePair());
+        container.appendChild(createResponsePair({}, type));
       }
     }
 
@@ -65,29 +90,37 @@
       const div = document.createElement('div');
       div.className = 'keyword-block';
       div.id = id;
-      
+
       const responsesHtml = (data.responses && data.responses.length > 0 ? data.responses : [{ data: {} }])
-        .map(resp => createResponsePair(resp).outerHTML).join('');
+        .map(resp => createResponsePair(resp, data.type || 'news').outerHTML).join('');
 
       div.innerHTML = `
         <label>คำค้นหา (คั่นด้วย ,)</label>
-        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion" style="font-family: sans-serif;">
-        
+        <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
+
         <label>ประเภท Flex Template</label>
-        <select class="type" style="font-family: sans-serif;">
+        <select class="type" onchange="updateResponses('${id}')" style="font-family: sans-serif;">
           ${Object.keys(settings.flex_templates || {}).map(type =>
             `<option value="${type}" ${type === data.type ? 'selected' : ''}>${type}</option>`
           ).join('')}
         </select>
-        
+
         <hr style="margin: 1.5rem 0;">
         <div class="responses-container">${responsesHtml}</div>
-        <button class="add-response" onclick="addResponseToBlock('${id}')">➕ เพิ่มชุดคำตอบ</button>
+        <button class="add-response" onclick="addResponseToBlock('${id}', document.querySelector('#${id} .type').value)">➕ เพิ่มชุดคำตอบ</button>
         <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
       `;
       keywordsContainer.appendChild(div);
     }
-    
+
+    function updateResponses(blockId) {
+      const block = document.getElementById(blockId);
+      const container = block.querySelector('.responses-container');
+      const type = block.querySelector('.type').value;
+      container.innerHTML = '';
+      container.appendChild(createResponsePair({}, type));
+    }
+
     function addKeyword() {
       addKeywordBlock();
     }
@@ -113,52 +146,46 @@
       const statusEl = document.getElementById('status');
       statusEl.innerText = 'กำลังบันทึก...';
       let allJsonIsValid = true;
-      
+
       const prompt = document.getElementById('prompt').value;
       const keywordBlocks = keywordsContainer.querySelectorAll('.keyword-block');
 
       const keywords = Array.from(keywordBlocks).map(div => {
+        const keywordText = div.querySelector('.keywords').value;
+        const type = div.querySelector('.type').value;
         const responsePairs = div.querySelectorAll('.response-pair');
         const responses = Array.from(responsePairs).map(pair => {
-          const textarea = pair.querySelector('.response-data');
-          textarea.style.border = '1px solid #d1d5db';
+          const inputs = pair.querySelectorAll('input[data-key]');
           let data = {};
-          try {
-            if (textarea.value.trim()) {
-              data = JSON.parse(textarea.value);
-            }
-          } catch (e) {
-            textarea.style.border = '2px solid red';
-            allJsonIsValid = false;
-          }
+          inputs.forEach(input => {
+            const key = input.dataset.key;
+            data[key] = input.value.trim();
+          });
+          const textarea = pair.querySelector('.response-data');
+          textarea.value = JSON.stringify(data, null, 2);
           return { data };
-        }).filter(r => r.data && Object.keys(r.data).length > 0);
-
+        });
         return {
-          keywords: div.querySelector('.keywords').value.split(',').map(s => s.trim()).filter(Boolean),
-          type: div.querySelector('.type').value,
-          responses: responses
+          keywords: keywordText.split(',').map(k => k.trim()).filter(Boolean),
+          type,
+          responses
         };
       });
 
-      if (!allJsonIsValid) {
-        statusEl.innerText = '❌ พบข้อผิดพลาด! กรุณาตรวจสอบรูปแบบ JSON ในช่องข้อมูลที่ไฮไลท์สีแดง';
-        return;
-      }
-
-      const body = { prompt, keywords, flex_templates: settings.flex_templates };
-      const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
-      const res = await fetch(apiUrl, {
+      const res = await fetch((window.API_BASE_URL || '') + '/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ prompt, keywords })
       });
 
-      statusEl.innerText = res.ok ? '✅ บันทึกเรียบร้อยแล้ว!' : '❌ บันทึกล้มเหลว';
-      setTimeout(() => { statusEl.innerText = ''; }, 3000);
+      if (res.ok) {
+        statusEl.innerText = '✅ บันทึกเรียบร้อยแล้ว';
+      } else {
+        statusEl.innerText = '❌ เกิดข้อผิดพลาดในการบันทึก';
+      }
     }
 
-    loadSettings();
+    window.addEventListener('load', loadSettings);
   </script>
 </body>
 </html>
