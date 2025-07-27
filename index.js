@@ -38,12 +38,18 @@ const settingsPath = path.join(__dirname, 'setting.json');
 let settings = { prompt: '', keywords: [], flex_templates: {} };
 function loadSettings() {
   try {
-    const data = fs.readFileSync(settingsPath, 'utf8');
-    settings = JSON.parse(data);
+    const rawData = fs.readFileSync(settingsPath, 'utf8');
+
+    // **FIX**: Clean the raw string data from setting.json before parsing.
+    // This regex removes semicolons that are likely syntax errors (e.g., before a comma, colon, or closing brace)
+    // without affecting semicolons inside actual string values.
+    const cleanedData = rawData.replace(/;(?=\s*[,}:])/g, '');
+
+    settings = JSON.parse(cleanedData);
     console.log('✅ Settings loaded successfully');
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      console.error('❌ Error loading settings.json:', err.message);
+      console.error('❌ Error loading or parsing settings.json:', err.message);
     } else {
       console.log('ℹ️ settings.json not found. A new one will be created on first save.');
     }
