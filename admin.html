@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -47,7 +46,7 @@
 
   <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
   <div style="text-align: center;">
-    <button onclick="saveSettings()" style="width: 100%; padding: 1rem; font-size: 1.2rem;">� บันทึกการตั้งค่าทั้งหมด</button>
+    <button onclick="saveSettings()" style="width: 100%; padding: 1rem; font-size: 1.2rem;">💾 บันทึกการตั้งค่าทั้งหมด</button>
     <p id="status" class="small"></p>
   </div>
 
@@ -306,6 +305,7 @@
         };
       }).filter(kw => kw.keywords.length > 0 && kw.responses.length > 0);
 
+      // ******** FIX: Send flex_templates back to the server ********
       const res = await fetch((window.API_BASE_URL || '') + '/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -323,6 +323,7 @@
   </script>
 </body>
 </html>
+
 
 <!-- <!DOCTYPE html>
 <html lang="th">
