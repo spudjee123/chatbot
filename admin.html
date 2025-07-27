@@ -1,4 +1,330 @@
+
 <!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ตั้งค่า LINE Bot</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
+    h1, h2, h3 { color: #10b981; text-align: center; }
+    h3 { color: #374151; margin-top: 0; }
+    textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: sans-serif; }
+    .keyword-block { display: flex; gap: 1.5rem; background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+    .form-container { flex: 2; }
+    .response-pair { padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 0.75rem; margin-bottom: 1rem; background-color: #fdfdfd; }
+    button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
+    button:hover { background: #059669; }
+    button.add-response { background-color: #3b82f6; }
+    button.add-response:hover { background-color: #2563eb; }
+    button.remove { background: #ef4444; }
+    button.remove:hover { background: #dc2626; }
+    .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
+    label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+
+    /* --- Enhanced Preview Styles --- */
+    .preview-section { flex: 1; background-color: #f3f4f6; padding: 1rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
+    .preview-container { display: flex; flex-direction: column; gap: 1.5rem; }
+    .preview-wrapper { background-color: #a7b0ba; padding: 20px; border-radius: 10px; margin-top: 1rem; transition: opacity 0.3s, transform 0.3s; }
+    .preview-bubble { background: #ffffff; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); max-width: 280px; margin: auto; overflow: hidden; text-align: left; }
+    .preview-thumbnail-target, .preview-hero_image-target { width: 100%; height: 140px; background-color: #e5e7eb; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.9rem; transition: background-image 0.2s; }
+    .preview-body { padding: 16px; }
+    .preview-title-target { font-weight: 700; font-size: 1rem; color: #1f2937; margin-bottom: 6px; word-wrap: break-word; }
+    .preview-text-target { font-size: 0.85rem; color: #6b7280; margin-bottom: 16px; white-space: pre-wrap; word-wrap: break-word; min-height: 2.5em; }
+    .preview-footer { padding: 8px 16px; border-top: 1px solid #eeeeee; display: flex; flex-direction: column; gap: 8px; }
+    .preview-button-target { display: block; width: 100%; box-sizing: border-box; text-align: center; padding: 10px; background-color: #06c755; color: white; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>ตั้งค่าระบบตอบกลับ LINE</h1>
+
+  <div class="keyword-block" style="flex-direction: column; gap: 0.5rem;">
+    <h2>Prompt สำหรับ GPT</h2>
+    <textarea id="prompt" rows="4" placeholder="ใส่ Prompt ที่จะใช้กับ GPT เพื่อให้ AI ตอบตามรูปแบบที่เราต้องการ..."></textarea>
+  </div>
+
+  <div id="keywords-container"></div>
+  <button onclick="addKeyword()">➕ เพิ่ม Keyword Block ใหม่</button>
+
+  <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
+  <div style="text-align: center;">
+    <button onclick="saveSettings()" style="width: 100%; padding: 1rem; font-size: 1.2rem;">� บันทึกการตั้งค่าทั้งหมด</button>
+    <p id="status" class="small"></p>
+  </div>
+
+  <script>
+    let settings = {};
+    const keywordsContainer = document.getElementById('keywords-container');
+
+    function extractPlaceholdersFromTemplate(template) {
+      const json = JSON.stringify(template);
+      const regex = /\{\{(.*?)\}\}/g;
+      const placeholders = new Set();
+      let match;
+      while ((match = regex.exec(json)) !== null) { placeholders.add(match[1]); }
+      return Array.from(placeholders);
+    }
+
+    function getPlaceholderText(fieldName) {
+      const examples = {
+        'thumbnail': 'URL รูปภาพ เช่น https://example.com/image.jpg',
+        'action_url': 'URL ที่จะเปิดเมื่อคลิก เช่น https://example.com/promotion',
+        'title': 'หัวข้อหลัก (แสดงเป็นตัวหนา)',
+        'text': 'เนื้อหารายละเอียดสั้นๆ',
+        'action_label': 'ข้อความบนปุ่ม เช่น "ดูเพิ่มเติม"',
+        'hero_image': 'URL รูปภาพหลักของร้านอาหาร',
+        'hero_url': 'URL ที่จะเปิดเมื่อคลิกที่รูปภาพหลัก',
+        'rating': 'คะแนนรีวิว เช่น 4.8',
+        'review_count': 'จำนวนรีวิว เช่น 1,250',
+        'address': 'ที่อยู่ของร้านอาหาร',
+        'hours': 'เวลาเปิด-ปิด เช่น 10:00 - 22:00',
+        'button1_text': 'ข้อความบนปุ่มที่ 1 เช่น "โทรสั่ง"',
+        'button1_url': 'URL หรือเบอร์โทรสำหรับปุ่ม 1 เช่น tel:0812345678',
+        'button2_text': 'ข้อความบนปุ่มที่ 2 เช่น "ดูเมนู"',
+        'button2_url': 'URL สำหรับปุ่มที่ 2',
+      };
+      return examples[fieldName] || `กรอกข้อมูลสำหรับ ${fieldName}`;
+    }
+    
+    function generatePreview(responseId, templateType) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'preview-wrapper';
+        wrapper.id = `preview-${responseId}`;
+
+        let innerHTML = '';
+        switch (templateType) {
+            case 'restaurant':
+                innerHTML = `
+                    <div class="preview-bubble">
+                        <div class="preview-hero_image-target"><span>(hero_image)</span></div>
+                        <div class="preview-body">
+                            <div class="preview-title-target">(title)</div>
+                            <div style="display: flex; align-items: center; margin: 6px 0;">
+                                <span style="color: #ffc107;">★</span>
+                                <span class="preview-rating-target" style="margin: 0 4px;">(rating)</span>
+                                <span class="preview-review_count-target" style="color: #999999;">(review_count)</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; margin-top: 8px;">
+                                <p style="margin: 2px 0;"><strong>ที่อยู่:</strong> <span class="preview-address-target">(address)</span></p>
+                                <p style="margin: 2px 0;"><strong>เวลา:</strong> <span class="preview-hours-target">(hours)</span></p>
+                            </div>
+                        </div>
+                        <div class="preview-footer">
+                             <a href="javascript:void(0);" class="preview-button-target preview-button1_text-target">(button1_text)</a>
+                             <a href="javascript:void(0);" class="preview-button-target preview-button2_text-target">(button2_text)</a>
+                        </div>
+                    </div>`;
+                break;
+            case 'news':
+            default:
+                innerHTML = `
+                    <div class="preview-bubble">
+                        <div class="preview-thumbnail-target"><span>(thumbnail)</span></div>
+                        <div class="preview-body">
+                            <div class="preview-title-target">(title)</div>
+                            <div class="preview-text-target">(text)</div>
+                        </div>
+                         <div class="preview-footer">
+                            <a href="javascript:void(0);" class="preview-button-target preview-action_label-target">(action_label)</a>
+                        </div>
+                    </div>`;
+                break;
+        }
+        wrapper.innerHTML = innerHTML;
+        return wrapper;
+    }
+
+    function updatePreviewField(input) {
+      const responsePair = input.closest('.response-pair');
+      if (!responsePair) return;
+      
+      const responseId = responsePair.id;
+      const previewWrapper = document.getElementById(`preview-${responseId}`);
+      if (!previewWrapper) return;
+
+      const key = input.dataset.key;
+      const value = input.value;
+      const target = previewWrapper.querySelector(`.preview-${key}-target`); 
+      if (!target) return;
+
+      if (key === 'thumbnail' || key === 'hero_image') {
+          const placeholderText = target.querySelector('span');
+          if (value && value.startsWith('http')) {
+              target.style.backgroundImage = `url('${value}')`;
+              if (placeholderText) placeholderText.style.display = 'none';
+          } else {
+              target.style.backgroundImage = 'none';
+              if (placeholderText) placeholderText.style.display = 'inline';
+          }
+      } else {
+          target.innerText = value || `(${key})`;
+      }
+    }
+
+    function createResponsePair(data = {}, templateType = 'news') {
+      const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+      const flexTemplate = settings.flex_templates[templateType] || {};
+      const div = document.createElement('div');
+      div.className = 'response-pair';
+      div.id = id;
+
+      const fields = extractPlaceholdersFromTemplate(flexTemplate);
+      let formHtml = '';
+      fields.forEach((field) => {
+        const value = (data.data && data.data[field]) || '';
+        formHtml += `<label>${field}</label><input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="${getPlaceholderText(field)}" oninput="updatePreviewField(this)">`;
+      });
+
+      div.innerHTML = `${formHtml}<button class="remove" onclick="removeResponseAndPreview('${id}')">ลบชุดคำตอบนี้</button>`;
+      return { element: div, id: id };
+    }
+    
+    function removeResponseAndPreview(responseId) {
+      const responseEl = document.getElementById(responseId);
+      const previewEl = document.getElementById(`preview-${responseId}`);
+      if (responseEl) responseEl.remove();
+      if (previewEl) previewEl.remove();
+    }
+
+    function addResponseToBlock(blockId) {
+      const block = document.getElementById(blockId);
+      if (!block) return;
+      const responsesContainer = block.querySelector('.responses-container');
+      const previewContainer = block.querySelector('.preview-container');
+      const type = block.querySelector('.type').value;
+
+      const { element: newPair, id: newId } = createResponsePair({}, type);
+      const newPreview = generatePreview(newId, type);
+
+      responsesContainer.appendChild(newPair);
+      previewContainer.appendChild(newPreview);
+      
+      newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
+    }
+
+    function addKeywordBlock(data = {}) {
+      const id = `kw-block-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+      const div = document.createElement('div');
+      div.className = 'keyword-block';
+      div.id = id;
+      
+      const currentType = data.type || (settings.flex_templates && Object.keys(settings.flex_templates)[0]) || 'news';
+      const responses = (data.responses && data.responses.length > 0) ? data.responses : [{ data: {} }];
+      
+      let responsesHtml = '';
+      let previewsHtml = '';
+
+      responses.forEach(resp => {
+        const { element, id: responseId } = createResponsePair(resp, currentType);
+        const previewElement = generatePreview(responseId, currentType);
+        responsesHtml += element.outerHTML;
+        previewsHtml += previewElement.outerHTML;
+      });
+
+      div.innerHTML = `
+        <div class="form-container">
+            <label>คำค้นหา (คั่นด้วย ,)</label>
+            <input type="text" class="keywords" value="${(data.keywords || []).join(', ')}" placeholder="โปรโมชั่น, โปร, promotion">
+            <label>ประเภท Flex Template</label>
+            <select class="type" onchange="updateBlockOnTypeChange('${id}')" style="font-family: sans-serif;">
+              ${Object.keys(settings.flex_templates || {}).map(type => `<option value="${type}" ${type === currentType ? 'selected' : ''}>${type}</option>`).join('')}
+            </select>
+            <hr style="margin: 1.5rem 0;">
+            <div class="responses-container">${responsesHtml}</div>
+            <button class="add-response" onclick="addResponseToBlock('${id}')">➕ เพิ่มชุดคำตอบ</button>
+            <button class="remove" style="float: right;" onclick="document.getElementById('${id}').remove()">❌ ลบ Keyword Block นี้</button>
+        </div>
+        <div class="preview-section">
+            <h3>ตัวอย่าง Template</h3>
+            <div class="preview-container">${previewsHtml}</div>
+        </div>
+      `;
+      keywordsContainer.appendChild(div);
+
+      div.querySelectorAll('.form-container .response-pair').forEach(pair => {
+          pair.querySelectorAll('input[data-key]').forEach(input => updatePreviewField(input));
+      });
+    }
+
+    function updateBlockOnTypeChange(blockId) {
+        const block = document.getElementById(blockId);
+        const type = block.querySelector('.type').value;
+        const responsesContainer = block.querySelector('.responses-container');
+        const previewContainer = block.querySelector('.preview-container');
+        
+        responsesContainer.innerHTML = '';
+        previewContainer.innerHTML = '';
+
+        const { element: newPair, id: newId } = createResponsePair({}, type);
+        const newPreview = generatePreview(newId, type);
+        responsesContainer.appendChild(newPair);
+        previewContainer.appendChild(newPreview);
+        newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
+    }
+    
+    function addKeyword() {
+      addKeywordBlock();
+    }
+
+    async function loadSettings() {
+      try {
+        const apiUrl = (window.API_BASE_URL || '') + '/admin/settings';
+        const res = await fetch(apiUrl);
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        settings = await res.json();
+        document.getElementById('prompt').value = settings.prompt || '';
+        keywordsContainer.innerHTML = '';
+        if (settings.keywords && settings.keywords.length > 0) {
+          settings.keywords.forEach(addKeywordBlock);
+        } else {
+           addKeyword();
+        }
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+        document.getElementById('status').innerText = '❌ โหลดการตั้งค่าไม่สำเร็จ';
+      }
+    }
+
+    async function saveSettings() {
+      const statusEl = document.getElementById('status');
+      statusEl.innerText = 'กำลังบันทึก...';
+      const prompt = document.getElementById('prompt').value;
+      const keywordBlocks = keywordsContainer.querySelectorAll('.keyword-block');
+      const keywords = Array.from(keywordBlocks).map(div => {
+        const keywordText = div.querySelector('.keywords').value;
+        const type = div.querySelector('.type').value;
+        const responsePairs = div.querySelectorAll('.response-pair');
+        const responses = Array.from(responsePairs).map(pair => {
+          const inputs = pair.querySelectorAll('input[data-key]');
+          let data = {};
+          inputs.forEach(input => { data[input.dataset.key] = input.value.trim(); });
+          return { data };
+        });
+        return {
+          keywords: keywordText.split(',').map(k => k.trim()).filter(Boolean),
+          type,
+          responses
+        };
+      }).filter(kw => kw.keywords.length > 0 && kw.responses.length > 0);
+
+      const res = await fetch((window.API_BASE_URL || '') + '/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, keywords, flex_templates: settings.flex_templates })
+      });
+
+      if (res.ok) {
+        statusEl.innerText = '✅ บันทึกเรียบร้อยแล้ว';
+      } else {
+        statusEl.innerText = '❌ เกิดข้อผิดพลาดในการบันทึก';
+      }
+    }
+
+    window.addEventListener('load', loadSettings);
+  </script>
+</body>
+</html>
+
+<!-- <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
@@ -279,4 +605,4 @@
     window.addEventListener('load', loadSettings);
   </script>
 </body>
-</html>
+</html> -->
