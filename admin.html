@@ -5,12 +5,11 @@
   <title>ตั้งค่า LINE Bot</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
-    h1, h2, h3 { text-align: center; color: #10b981; }
+    h1, h2, h3 { color: #10b981; text-align: center; }
     h3 { color: #374151; margin-top: 0; }
     textarea, input, select { width: 100%; margin-bottom: 1rem; padding: 0.75rem; font-size: 1rem; border-radius: 0.5rem; border: 1px solid #d1d5db; box-sizing: border-box; font-family: sans-serif; }
     .keyword-block { display: flex; gap: 1.5rem; background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
     .form-container { flex: 2; }
-    .preview-section { flex: 1; background-color: #f3f4f6; padding: 1rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; }
     .response-pair { padding: 1rem; border: 1px dashed #e5e7eb; border-radius: 0.5rem; margin-bottom: 1rem; }
     button { background: #10b981; color: white; border: none; padding: 0.7rem 1.5rem; font-size: 1rem; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s; }
     button:hover { background: #059669; }
@@ -21,13 +20,15 @@
     .small { font-size: 0.85rem; color: #6b7280; text-align: center; }
     label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
 
-    /* --- Preview Styles --- */
-    .preview-bubble { background: #ffffff; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 280px; margin: auto; }
-    .preview-image { width: 100%; height: 140px; background: #e5e7eb center/cover; border-top-left-radius: 10px; border-top-right-radius: 10px; display:flex; align-items:center; justify-content:center; color:#9ca3af; font-size:0.9rem; }
+    /* --- Enhanced Preview Styles --- */
+    .preview-section { flex: 1; background-color: #f3f4f6; padding: 1rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; }
+    .preview-wrapper { background-color: #a7b0ba; padding: 20px; border-radius: 10px; margin-top: 1rem; }
+    .preview-bubble { background: #ffffff; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); max-width: 280px; margin: auto; overflow: hidden; text-align: left; }
+    .preview-image-target { width: 100%; height: 140px; background-color: #e5e7eb; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.9rem; transition: background-image 0.2s; }
     .preview-body { padding: 16px; }
-    .preview-title { font-weight: bold; font-size: 1.1rem; color: #1f2937; margin-bottom: 8px; }
-    .preview-text { font-size: 0.9rem; color: #6b7280; margin-bottom: 16px; white-space: pre-wrap; }
-    .preview-button { display: block; width: 100%; text-align: center; padding: 12px; background-color: #10b981; color: white; border-radius: 5px; text-decoration: none; font-weight: bold; }
+    .preview-title-target { font-weight: 700; font-size: 1rem; color: #1f2937; margin-bottom: 6px; word-wrap: break-word; }
+    .preview-text-target { font-size: 0.85rem; color: #6b7280; margin-bottom: 16px; white-space: pre-wrap; word-wrap: break-word; min-height: 2.5em; }
+    .preview-button-target { display: block; width: 100%; box-sizing: border-box; text-align: center; padding: 10px; background-color: #06c755; color: white; border-radius: 8px; text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -56,9 +57,7 @@
       const regex = /\{\{(.*?)\}\}/g;
       const placeholders = new Set();
       let match;
-      while ((match = regex.exec(json)) !== null) {
-        placeholders.add(match[1]);
-      }
+      while ((match = regex.exec(json)) !== null) { placeholders.add(match[1]); }
       return Array.from(placeholders);
     }
 
@@ -74,24 +73,47 @@
     }
     
     function generatePreview(templateType) {
-        // ในอนาคตสามารถดึงโครงสร้าง Preview มาจาก settings ได้
-        // แต่ตอนนี้ใช้การ hardcode ตามประเภทที่พบบ่อย
-        switch (templateType) {
-            case 'news':
-            default:
-                return `
-                    <div class="preview-bubble">
-                        <div class="preview-image"><span>(thumbnail)</span></div>
-                        <div class="preview-body">
-                            <div class="preview-title">(title)</div>
-                            <div class="preview-text">(text)</div>
-                            <a href="#" class="preview-button">(action_label)</a>
-                        </div>
+        return `
+            <div class="preview-wrapper">
+                <div class="preview-bubble">
+                    <div class="preview-image-target"><span>(thumbnail)</span></div>
+                    <div class="preview-body">
+                        <div class="preview-title-target">(title)</div>
+                        <div class="preview-text-target">(text)</div>
+                        <a href="javascript:void(0);" class="preview-button-target">(action_label)</a>
                     </div>
-                `;
-        }
+                </div>
+            </div>
+        `;
     }
 
+    function updatePreviewField(input) {
+      const block = input.closest('.keyword-block');
+      if (!block) return;
+
+      const key = input.dataset.key;
+      const value = input.value;
+      const target = block.querySelector(`.preview-${key}-target`);
+      if (!target) return;
+
+      switch (key) {
+        case 'thumbnail':
+          const placeholderText = target.querySelector('span');
+          if (value && value.startsWith('http')) {
+              target.style.backgroundImage = `url('${value}')`;
+              if (placeholderText) placeholderText.style.display = 'none';
+          } else {
+              target.style.backgroundImage = 'none';
+              if (placeholderText) placeholderText.style.display = 'inline';
+          }
+          break;
+        case 'title':
+        case 'text':
+        case 'action_label':
+          target.innerText = value || `(${key})`;
+          break;
+      }
+    }
 
     function createResponsePair(data = {}, templateType = 'news') {
       const id = `resp-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
@@ -107,7 +129,8 @@
         const value = (data.data && data.data[field]) || '';
         formHtml += `
           <label>${field}</label>
-          <input type="text" class="field-${field}" data-key="${field}" value="${value}" placeholder="${getPlaceholderText(field)}">
+          <input type="text" class="field-${field}" data-key="${field}" value="${value}" 
+                 placeholder="${getPlaceholderText(field)}" oninput="updatePreviewField(this)">
         `;
       });
 
@@ -116,14 +139,16 @@
         <textarea class="response-data" style="display:none;">${JSON.stringify(data.data || {}, null, 2)}</textarea>
         <button class="remove" onclick="document.getElementById('${id}').remove()">ลบชุดคำตอบนี้</button>
       `;
-
       return div;
     }
 
     function addResponseToBlock(blockId, type) {
       const container = document.querySelector(`#${blockId} .responses-container`);
       if (container) {
-        container.appendChild(createResponsePair({}, type));
+          const newPair = createResponsePair({}, type);
+          container.appendChild(newPair);
+          // Update preview for the newly added empty fields
+          newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
       }
     }
 
@@ -161,6 +186,10 @@
         </div>
       `;
       keywordsContainer.appendChild(div);
+
+      // Sync initial data to preview for this new block
+      const initialInputs = div.querySelectorAll('.form-container input[data-key]');
+      initialInputs.forEach(input => updatePreviewField(input));
     }
 
     function updateResponsesAndPreview(blockId) {
@@ -171,17 +200,16 @@
 
       // Update responses form
       responsesContainer.innerHTML = '';
-      responsesContainer.appendChild(createResponsePair({}, type));
+      const newPair = createResponsePair({}, type);
+      responsesContainer.appendChild(newPair);
 
       // Update preview
       previewContainer.innerHTML = generatePreview(type);
+      
+      // Update preview for the newly added empty fields
+      newPair.querySelectorAll('input').forEach(input => updatePreviewField(input));
     }
     
-    // Legacy function name for safety, can be removed if not used elsewhere
-    function updateResponses(blockId) {
-       updateResponsesAndPreview(blockId);
-    }
-
     function addKeyword() {
       addKeywordBlock();
     }
@@ -197,7 +225,6 @@
         if (settings.keywords && settings.keywords.length > 0) {
           settings.keywords.forEach(addKeywordBlock);
         } else {
-           // Add one empty block if no keywords are set
            addKeyword();
         }
       } catch (error) {
@@ -220,10 +247,7 @@
         const responses = Array.from(responsePairs).map(pair => {
           const inputs = pair.querySelectorAll('input[data-key]');
           let data = {};
-          inputs.forEach(input => {
-            const key = input.dataset.key;
-            data[key] = input.value.trim();
-          });
+          inputs.forEach(input => { data[input.dataset.key] = input.value.trim(); });
           const textarea = pair.querySelector('.response-data');
           textarea.value = JSON.stringify(data, null, 2);
           return { data };
